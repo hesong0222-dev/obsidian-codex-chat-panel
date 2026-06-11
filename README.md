@@ -11,6 +11,7 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 - Opens as a right-side Obsidian panel.
 - Sends the active note as context.
 - Sends highlighted text as focused context when you drag-select part of a note.
+- Can edit the active note or highlighted selection in `Edit` mode.
 - Keeps a small chat history so follow-up questions make sense.
 - Shows when Codex is reading, working, and typing.
 - Streams Codex CLI JSON events into the panel instead of waiting silently.
@@ -113,6 +114,28 @@ The model picker sits next to the send button.
 
 The plugin only shows models that are practical for Codex with a ChatGPT account.
 
+### Edit the Current Note
+
+Switch `Mode` from `Chat` to `Edit`, then describe the change you want.
+
+Examples:
+
+```text
+make this explanation shorter and clearer
+turn this section into bullet points
+fix the C code comments in the selected block
+rewrite this note as an exam checklist
+```
+
+If text is selected, Codex edits that selection. If nothing is selected, Codex edits the whole active note.
+
+Edit mode is intentionally scoped:
+
+- It only applies changes to the active note.
+- It uses structured JSON from Codex.
+- The plugin applies the final text through Obsidian's vault API.
+- Large whole-note edits are blocked; select a smaller section instead.
+
 ## Settings
 
 Open `Settings -> Codex Chat Panel`.
@@ -156,6 +179,18 @@ The prompt includes:
 
 The panel listens to Codex JSONL events for status updates and assistant messages. It still reads `--output-last-message` as a final fallback, so noisy CLI logs do not show up in the chat.
 
+In Edit mode, Codex must return structured JSON:
+
+```json
+{
+  "operation": "replace_selection",
+  "content": "updated Markdown",
+  "summary": "what changed"
+}
+```
+
+The plugin then applies that result to the active note.
+
 ## Privacy And Safety
 
 This plugin sends note content to Codex through your local Codex CLI session. It does not run its own server and does not store chat transcripts outside Obsidian's plugin runtime.
@@ -165,6 +200,7 @@ Important defaults:
 - Codex runs with `--sandbox read-only`.
 - Calls are `--ephemeral`.
 - The plugin ignores project/user Codex rules for cleaner note Q&A.
+- Edit mode is limited to the active Obsidian note and applies changes through Obsidian, not arbitrary shell writes.
 
 You should still treat selected text and active notes as data you are intentionally sending to Codex.
 

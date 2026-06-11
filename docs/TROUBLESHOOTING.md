@@ -54,3 +54,14 @@ codex debug models
 ```
 
 Then choose a model available to your account.
+
+## Edit Mode Did Not Apply
+
+Edit mode can replace the active file or an exact selected text range. If you selected text in reading mode and the rendered text does not appear verbatim in the Markdown source, the plugin may not be able to apply a selection replacement.
+
+Try one of these:
+
+- select the text in source mode,
+- ask for a whole-note edit,
+- select a smaller section,
+- simplify the edit request.

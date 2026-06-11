@@ -27,6 +27,17 @@ The plugin runs Codex with:
 
 These defaults are meant to keep note Q&A predictable and avoid accidental file edits.
 
+## Edit Mode
+
+Edit mode can modify the active Obsidian note. Codex returns a structured edit payload and the plugin applies it with Obsidian's vault API.
+
+The scope is intentionally narrow:
+
+- active note only,
+- selected text or whole note only,
+- no arbitrary shell writes,
+- no multi-file edits.
+
 ## Reporting Issues
 
 Please open a GitHub issue for security-sensitive behavior that does not expose private data. If private data is involved, open a minimal issue first and describe the category of problem without including the sensitive content.

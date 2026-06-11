@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Added Edit mode.
+- Codex can now rewrite the active note or the selected text.
+- Edits are returned as structured JSON and applied through Obsidian's vault API.
+- Edit scope is intentionally limited to the current active note.
+
 ## 0.2.0
 
 - Added Codex typing/progress indicators.

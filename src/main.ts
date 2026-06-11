@@ -45,6 +45,8 @@ interface ChatMessage {
   statusText?: string;
 }
 
+type ComposerMode = "chat" | "edit";
+
 interface ActiveFileContext {
   file: TFile | null;
   path: string;
@@ -66,6 +68,12 @@ interface CodexJsonEvent {
     type?: string;
     text?: string;
   };
+}
+
+interface EditResult {
+  operation: "replace_file" | "replace_selection";
+  content: string;
+  summary: string;
 }
 
 const DEFAULT_SETTINGS: CodexChatSettings = {
@@ -178,8 +186,8 @@ export default class CodexChatPlugin extends Plugin {
   }
 
   getSelectionForContext(file: TFile): string {
-    const editorSelection = this.getEditorSelectionForFile(file).trim();
-    if (editorSelection) {
+    const editorSelection = this.getEditorSelectionForFile(file);
+    if (editorSelection.trim()) {
       this.selectionSnapshot = {
         text: editorSelection,
         filePath: file.path,
@@ -243,8 +251,8 @@ export default class CodexChatPlugin extends Plugin {
 
   private captureSelectionSnapshot(): void {
     const selection = window.getSelection();
-    const text = selection?.toString().trim() ?? "";
-    if (!selection || !text) {
+    const text = selection?.toString() ?? "";
+    if (!selection || !text.trim()) {
       return;
     }
 
@@ -290,6 +298,8 @@ class CodexChatView extends ItemView {
   private stopButtonEl!: HTMLButtonElement;
   private statusEl!: HTMLElement;
   private modelSelectEl!: HTMLSelectElement;
+  private modeSelectEl!: HTMLSelectElement;
+  private mode: ComposerMode = "chat";
   private busy = false;
   private cancelRequested = false;
 
@@ -419,6 +429,7 @@ class CodexChatView extends ItemView {
     });
 
     const composerActions = composer.createDiv({ cls: "codex-chat-composer-actions" });
+    this.renderModePicker(composerActions);
     this.renderModelPicker(composerActions);
     this.stopButtonEl = this.makeIconButton(composerActions, "square", "Stop", () => this.cancelCodex());
     this.sendButtonEl = this.makeIconButton(composerActions, "send", "Send", () => {
@@ -574,19 +585,28 @@ class CodexChatView extends ItemView {
     this.setBusy(true);
 
     try {
-      const prompt = this.buildPrompt(text, context, priorMessages);
-      const answer = await this.streamCodex(prompt, {
-        onText: (partial) => {
-          assistantMessage.content = partial;
-          assistantMessage.statusText = "Codex is typing";
-          void this.renderMessages();
-        },
-        onStatus: (status) => {
-          assistantMessage.statusText = status;
-          void this.renderMessages();
-        }
-      });
-      assistantMessage.content = answer.trim() || "(empty response)";
+      if (this.mode === "edit") {
+        const result = await this.runEdit(text, context, assistantMessage);
+        assistantMessage.content = [
+          `Edited \`${context.path}\`.`,
+          "",
+          result.summary
+        ].join("\n");
+      } else {
+        const prompt = this.buildPrompt(text, context, priorMessages);
+        const answer = await this.streamCodex(prompt, {
+          onText: (partial) => {
+            assistantMessage.content = partial;
+            assistantMessage.statusText = "Codex is typing";
+            void this.renderMessages();
+          },
+          onStatus: (status) => {
+            assistantMessage.statusText = status;
+            void this.renderMessages();
+          }
+        });
+        assistantMessage.content = answer.trim() || "(empty response)";
+      }
       assistantMessage.state = undefined;
       assistantMessage.statusText = undefined;
     } catch (error) {
@@ -607,6 +627,118 @@ class CodexChatView extends ItemView {
       void this.renderMessages();
       this.focusComposer();
     }
+  }
+
+  private async runEdit(
+    userText: string,
+    context: ActiveFileContext,
+    assistantMessage: ChatMessage
+  ): Promise<EditResult> {
+    if (!context.file) {
+      throw new Error("No active note to edit.");
+    }
+
+    const fullContent = await this.plugin.app.vault.read(context.file);
+    const selectedText = context.selection;
+    const hasSelection = selectedText.trim().length > 0;
+    if (!hasSelection && context.clipped) {
+      throw new Error("This note is too large for a whole-note edit. Select a smaller section and try again.");
+    }
+    if (hasSelection && !fullContent.includes(selectedText)) {
+      throw new Error("Could not find the selected text in the source note. Try selecting text in source mode or ask for a whole-note edit.");
+    }
+
+    assistantMessage.statusText = hasSelection ? "Codex is editing the selection" : "Codex is editing the note";
+    void this.renderMessages();
+
+    const prompt = this.buildEditPrompt(userText, context, fullContent);
+    const resultText = await this.streamCodex(prompt, {
+      outputSchema: buildEditOutputSchema(),
+      onText: (partial) => {
+        assistantMessage.content = "Preparing edit...";
+        assistantMessage.statusText = "Codex is preparing changes";
+        if (partial.trim()) {
+          const parsed = parseEditResult(partial);
+          if (parsed?.summary) {
+            assistantMessage.content = parsed.summary;
+          }
+        }
+        void this.renderMessages();
+      },
+      onStatus: (status) => {
+        assistantMessage.statusText = status;
+        void this.renderMessages();
+      }
+    });
+
+    const result = parseEditResult(resultText);
+    if (!result) {
+      throw new Error("Codex did not return a valid edit payload.");
+    }
+
+    await this.applyEditResult(context.file, fullContent, selectedText, result);
+    await this.refreshContext();
+    return result;
+  }
+
+  private buildEditPrompt(userText: string, context: ActiveFileContext, fullContent: string): string {
+    const selectedText = context.selection;
+    const hasSelection = selectedText.trim().length > 0;
+    const activeFileBlock = hasSelection
+      ? context.content
+      : fullContent;
+    return [
+      "You are editing an Obsidian Markdown note for the user.",
+      "Return only JSON matching the provided schema.",
+      "Do not include Markdown fences around the JSON.",
+      "Preserve YAML frontmatter, wikilinks, Markdown links, code fences, headings, and surrounding structure unless the user explicitly asks to change them.",
+      "If a selection is provided, use operation replace_selection and return only the replacement Markdown for that selection.",
+      "If no selection is provided, use operation replace_file and return the complete updated file content.",
+      "",
+      `Active file path: ${context.path}`,
+      "",
+      `<active_file>`,
+      activeFileBlock,
+      `</active_file>`,
+      "",
+      hasSelection
+        ? [
+          `<selection>`,
+          selectedText,
+          `</selection>`
+        ].join("\n")
+        : "<selection omitted=\"true\" />",
+      "",
+      "<edit_request>",
+      userText,
+      "</edit_request>"
+    ].join("\n");
+  }
+
+  private async applyEditResult(
+    file: TFile,
+    fullContent: string,
+    selectedText: string,
+    result: EditResult
+  ): Promise<void> {
+    if (selectedText.trim() && result.operation === "replace_file") {
+      throw new Error("Codex returned a whole-note edit for a selection. Try the edit again or clear the selection for a whole-note rewrite.");
+    }
+
+    if (result.operation === "replace_selection") {
+      if (!selectedText) {
+        throw new Error("Codex returned a selection edit, but no selection is available.");
+      }
+      const index = fullContent.indexOf(selectedText);
+      if (index < 0) {
+        throw new Error("Could not find the selected text in the source note. Try selecting text in source mode or ask for a whole-note edit.");
+      }
+      const nextContent = `${fullContent.slice(0, index)}${result.content}${fullContent.slice(index + selectedText.length)}`;
+      await this.plugin.app.vault.modify(file, nextContent);
+      return;
+    }
+
+    await this.plugin.app.vault.modify(file, result.content);
   }
 
   private buildPrompt(userText: string, context: ActiveFileContext, priorMessages: ChatMessage[]): string {
@@ -669,6 +801,7 @@ class CodexChatView extends ItemView {
     handlers: {
       onText: (text: string) => void;
       onStatus: (status: string) => void;
+      outputSchema?: object;
     }
   ): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -679,6 +812,9 @@ class CodexChatView extends ItemView {
         `obsidian-codex-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`
       );
       this.currentTempOutput = tempOutput;
+      const schemaPath = handlers.outputSchema
+        ? writeTempJsonFile(handlers.outputSchema)
+        : null;
 
       const args = [
         "exec",
@@ -697,6 +833,9 @@ class CodexChatView extends ItemView {
       ];
 
       args.splice(1, 0, "--model", this.plugin.resolveModel());
+      if (schemaPath) {
+        args.splice(args.length - 1, 0, "--output-schema", schemaPath);
+      }
 
       const child = spawn(codexPath, args, {
         cwd: vaultBasePath,
@@ -724,6 +863,9 @@ class CodexChatView extends ItemView {
         window.clearTimeout(timeout);
         if (this.currentProcess === child) {
           this.currentProcess = null;
+        }
+        if (schemaPath) {
+          removeTempFile(schemaPath);
         }
         this.currentTempOutput = null;
       };
@@ -833,10 +975,34 @@ class CodexChatView extends ItemView {
     if (this.modelSelectEl) {
       this.modelSelectEl.disabled = value;
     }
+    if (this.modeSelectEl) {
+      this.modeSelectEl.disabled = value;
+    }
     if (this.statusEl) {
       this.statusEl.setText(value ? "typing" : "ready");
       this.statusEl.toggleClass("is-busy", value);
     }
+  }
+
+  private renderModePicker(parent: HTMLElement): void {
+    const wrapper = parent.createEl("label", { cls: "codex-chat-mode-picker" });
+    wrapper.createSpan({ text: "Mode", cls: "codex-chat-model-label" });
+
+    this.modeSelectEl = wrapper.createEl("select", {
+      cls: "codex-chat-mode-select",
+      attr: {
+        "aria-label": "Codex mode"
+      }
+    });
+    this.modeSelectEl.createEl("option", { text: "Chat", value: "chat" });
+    this.modeSelectEl.createEl("option", { text: "Edit", value: "edit" });
+    this.modeSelectEl.value = this.mode;
+    this.modeSelectEl.addEventListener("change", () => {
+      this.mode = this.modeSelectEl.value === "edit" ? "edit" : "chat";
+      this.inputEl.placeholder = this.mode === "edit"
+        ? "Tell Codex how to edit this note"
+        : "Ask Codex about the active file";
+    });
   }
 
   private renderModelPicker(parent: HTMLElement): void {
@@ -1071,6 +1237,70 @@ function readAndDeleteTempFile(filePath: string): string {
   } catch {
     return "";
   }
+}
+
+function removeTempFile(filePath: string): void {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
+function writeTempJsonFile(value: object): string {
+  const filePath = path.join(
+    os.tmpdir(),
+    `obsidian-codex-schema-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+  );
+  fs.writeFileSync(filePath, JSON.stringify(value), "utf8");
+  return filePath;
+}
+
+function buildEditOutputSchema(): object {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      operation: {
+        type: "string",
+        enum: ["replace_file", "replace_selection"]
+      },
+      content: {
+        type: "string"
+      },
+      summary: {
+        type: "string"
+      }
+    },
+    required: ["operation", "content", "summary"]
+  };
+}
+
+function parseEditResult(text: string): EditResult | null {
+  try {
+    const parsed: unknown = JSON.parse(text.trim());
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const candidate = parsed as Partial<EditResult>;
+    if (
+      (candidate.operation === "replace_file" || candidate.operation === "replace_selection") &&
+      typeof candidate.content === "string" &&
+      typeof candidate.summary === "string"
+    ) {
+      return {
+        operation: candidate.operation,
+        content: candidate.content,
+        summary: candidate.summary
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function parseCodexJsonEvent(line: string): CodexJsonEvent | null {
