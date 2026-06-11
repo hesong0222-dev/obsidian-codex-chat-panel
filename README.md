@@ -11,6 +11,7 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 - Opens as a right-side Obsidian panel.
 - Sends the active note as context.
 - Sends highlighted text as focused context when you drag-select part of a note.
+- Shows `Ask in side chat` beside selected note text for quick selection questions.
 - Can edit the active note or highlighted selection in `Edit` mode.
 - Keeps a small chat history so follow-up questions make sense.
 - Shows when Codex is reading, working, and typing.
@@ -95,7 +96,7 @@ Use `Shift+Enter` for a new line.
 
 ### Ask About a Selection
 
-Drag-select text in source mode or reading mode, then ask a question in the Codex panel. The selected excerpt is sent as a focused `<selection>` block.
+Drag-select text in source mode or reading mode. A small `Ask in side chat` button appears beside the selection. Click it to open the panel with that excerpt captured as a focused `<selection>` block, then type your question.
 
 This is useful for:
 
@@ -231,7 +232,7 @@ Common macOS paths:
 
 Make sure `Include selection` is enabled in settings. Then select text in the note before clicking the panel.
 
-The panel shows `Selected N chars` when it has captured a selection.
+The panel shows `Selected N chars` when it has captured a selection. When possible, the note also shows an `Ask in side chat` button beside the selected text.
 
 ### A Model Fails
 

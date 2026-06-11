@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Added a floating `Ask in side chat` action when note text is selected.
+- The action opens the side panel, captures the selected text as context, and focuses the composer.
+
 ## 0.3.0
 
 - Added Edit mode.

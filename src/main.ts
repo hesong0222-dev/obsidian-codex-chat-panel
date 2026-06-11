@@ -62,6 +62,12 @@ interface SelectionSnapshot {
   createdAt: number;
 }
 
+interface SelectionCapture {
+  text: string;
+  file: TFile;
+  rect: DOMRect | null;
+}
+
 interface CodexJsonEvent {
   type?: string;
   item?: {
@@ -91,6 +97,7 @@ export default class CodexChatPlugin extends Plugin {
   lastActiveFile: TFile | null = null;
   currentView: CodexChatView | null = null;
   private selectionSnapshot: SelectionSnapshot | null = null;
+  private selectionActionEl: HTMLButtonElement | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -131,15 +138,30 @@ export default class CodexChatPlugin extends Plugin {
     );
 
     this.registerDomEvent(document, "selectionchange", () => {
-      this.captureSelectionSnapshot();
+      this.captureSelectionSnapshot({ showAction: true });
     });
 
     this.registerDomEvent(document, "mouseup", () => {
-      window.setTimeout(() => this.captureSelectionSnapshot(), 0);
+      window.setTimeout(() => this.captureSelectionSnapshot({ showAction: true }), 0);
     });
 
     this.registerDomEvent(document, "keyup", () => {
-      this.captureSelectionSnapshot();
+      this.captureSelectionSnapshot({ showAction: true });
+    });
+
+    this.registerDomEvent(document, "mousedown", (event) => {
+      const target = event.target as Element | null;
+      if (!target?.closest(".codex-chat-selection-action")) {
+        this.hideSelectionAction();
+      }
+    });
+
+    this.registerDomEvent(window, "resize", () => {
+      this.hideSelectionAction();
+    });
+
+    this.registerDomEvent(window, "scroll", () => {
+      this.hideSelectionAction();
     });
 
     this.addSettingTab(new CodexChatSettingTab(this.app, this));
@@ -151,6 +173,7 @@ export default class CodexChatPlugin extends Plugin {
 
   onunload(): void {
     this.currentView?.cancelCodex();
+    this.removeSelectionAction();
     this.currentView = null;
   }
 
@@ -249,30 +272,136 @@ export default class CodexChatPlugin extends Plugin {
     void this.currentView?.refreshContext();
   }
 
-  private captureSelectionSnapshot(): void {
-    const selection = window.getSelection();
-    const text = selection?.toString() ?? "";
-    if (!selection || !text.trim()) {
+  private captureSelectionSnapshot(options: { showAction: boolean }): void {
+    const capture = this.readSelectionCapture();
+    if (!capture) {
+      this.hideSelectionAction();
       return;
     }
 
-    const anchorEl = nodeToElement(selection.anchorNode);
+    this.lastActiveFile = capture.file;
+    this.selectionSnapshot = {
+      text: capture.text,
+      filePath: capture.file.path,
+      createdAt: Date.now()
+    };
+    this.currentView?.setSelectionPreview(capture.file.path, capture.text);
+
+    if (options.showAction) {
+      this.showSelectionAction(capture);
+    }
+  }
+
+  private readSelectionCapture(): SelectionCapture | null {
+    const selection = window.getSelection();
+    const text = selection?.toString() ?? "";
+    const anchorEl = nodeToElement(selection?.anchorNode ?? null);
     if (anchorEl?.closest(".codex-chat-root")) {
-      return;
+      return null;
     }
 
     const file = this.getActiveFileForContext();
     if (!file) {
+      return null;
+    }
+
+    if (selection && text.trim()) {
+      return {
+        text,
+        file,
+        rect: getSelectionRect(selection)
+      };
+    }
+
+    const editorSelection = this.getEditorSelectionForFile(file);
+    if (!editorSelection.trim()) {
+      return null;
+    }
+
+    return {
+      text: editorSelection,
+      file,
+      rect: this.getEditorSelectionRect()
+    };
+  }
+
+  private getEditorSelectionRect(): DOMRect | null {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const rects = Array.from(
+      view?.containerEl.querySelectorAll<HTMLElement>(".cm-selectionBackground") ?? []
+    )
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+
+    return rects.at(-1) ?? null;
+  }
+
+  private showSelectionAction(capture: SelectionCapture): void {
+    if (!capture.rect) {
       return;
     }
 
-    this.lastActiveFile = file;
-    this.selectionSnapshot = {
-      text,
-      filePath: file.path,
-      createdAt: Date.now()
-    };
-    this.currentView?.setSelectionPreview(file.path, text);
+    const button = this.ensureSelectionActionEl();
+    button.dataset.filePath = capture.file.path;
+    const top = Math.max(8, Math.min(window.innerHeight - 42, capture.rect.bottom + 8));
+    const left = Math.max(8, Math.min(window.innerWidth - 168, capture.rect.left));
+    button.style.top = `${Math.max(8, top)}px`;
+    button.style.left = `${left}px`;
+    button.removeClass("codex-chat-hidden");
+  }
+
+  private ensureSelectionActionEl(): HTMLButtonElement {
+    if (this.selectionActionEl) {
+      return this.selectionActionEl;
+    }
+
+    const button = document.body.createEl("button", {
+      cls: "codex-chat-selection-action",
+      attr: {
+        type: "button",
+        "aria-label": "Ask in side chat"
+      }
+    });
+    const icon = button.createSpan({ cls: "codex-chat-selection-action-icon" });
+    setIcon(icon, "message-square-text");
+    button.createSpan({ text: "Ask in side chat" });
+
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+    });
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await this.askSelectionInSideChat();
+    });
+
+    this.selectionActionEl = button;
+    return button;
+  }
+
+  private hideSelectionAction(): void {
+    this.selectionActionEl?.addClass("codex-chat-hidden");
+  }
+
+  private removeSelectionAction(): void {
+    this.selectionActionEl?.remove();
+    this.selectionActionEl = null;
+  }
+
+  private async askSelectionInSideChat(): Promise<void> {
+    const snapshot = this.selectionSnapshot;
+    if (!snapshot?.text.trim()) {
+      this.hideSelectionAction();
+      return;
+    }
+
+    const view = await this.activateView({ focusComposer: false });
+    if (!view) {
+      return;
+    }
+
+    view.setSelectionPreview(snapshot.filePath, snapshot.text);
+    view.prepareSelectionQuestion();
+    this.hideSelectionAction();
   }
 
   private getEditorSelectionForFile(file: TFile): string {
@@ -336,6 +465,14 @@ class CodexChatView extends ItemView {
 
   focusComposer(): void {
     window.setTimeout(() => this.inputEl?.focus(), 50);
+  }
+
+  prepareSelectionQuestion(): void {
+    this.setMode("chat");
+    if (this.inputEl) {
+      this.inputEl.placeholder = "Ask Codex about the selected text";
+    }
+    this.focusComposer();
   }
 
   cancelCodex(): void {
@@ -998,11 +1135,20 @@ class CodexChatView extends ItemView {
     this.modeSelectEl.createEl("option", { text: "Edit", value: "edit" });
     this.modeSelectEl.value = this.mode;
     this.modeSelectEl.addEventListener("change", () => {
-      this.mode = this.modeSelectEl.value === "edit" ? "edit" : "chat";
-      this.inputEl.placeholder = this.mode === "edit"
+      this.setMode(this.modeSelectEl.value === "edit" ? "edit" : "chat");
+    });
+  }
+
+  private setMode(mode: ComposerMode): void {
+    this.mode = mode;
+    if (this.modeSelectEl) {
+      this.modeSelectEl.value = mode;
+    }
+    if (this.inputEl) {
+      this.inputEl.placeholder = mode === "edit"
         ? "Tell Codex how to edit this note"
         : "Ask Codex about the active file";
-    });
+    }
   }
 
   private renderModelPicker(parent: HTMLElement): void {
@@ -1199,6 +1345,22 @@ function nodeToElement(node: Node | null): Element | null {
   }
 
   return node instanceof Element ? node : node.parentElement;
+}
+
+function getSelectionRect(selection: Selection): DOMRect | null {
+  if (selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(selection.rangeCount - 1);
+  const rects = Array.from(range.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+  if (rects.length > 0) {
+    return rects[rects.length - 1];
+  }
+
+  const rect = range.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 ? rect : null;
 }
 
 function makeId(): string {
