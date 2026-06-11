@@ -41,6 +41,8 @@ interface ChatMessage {
   content: string;
   createdAt: string;
   filePath?: string;
+  state?: "streaming" | "error";
+  statusText?: string;
 }
 
 interface ActiveFileContext {
@@ -56,6 +58,14 @@ interface SelectionSnapshot {
   text: string;
   filePath: string;
   createdAt: number;
+}
+
+interface CodexJsonEvent {
+  type?: string;
+  item?: {
+    type?: string;
+    text?: string;
+  };
 }
 
 const DEFAULT_SETTINGS: CodexChatSettings = {
@@ -281,6 +291,7 @@ class CodexChatView extends ItemView {
   private statusEl!: HTMLElement;
   private modelSelectEl!: HTMLSelectElement;
   private busy = false;
+  private cancelRequested = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: CodexChatPlugin) {
     super(leaf);
@@ -319,6 +330,7 @@ class CodexChatView extends ItemView {
 
   cancelCodex(): void {
     if (this.currentProcess) {
+      this.cancelRequested = true;
       this.currentProcess.kill("SIGTERM");
       this.currentProcess = null;
       this.setBusy(false);
@@ -500,14 +512,21 @@ class CodexChatView extends ItemView {
 
       const body = item.createDiv({ cls: "codex-chat-message-body" });
       if (message.role === "assistant") {
-        body.addClass("markdown-rendered");
-        await MarkdownRenderer.render(
-          this.app,
-          message.content,
-          body,
-          message.filePath ?? "",
-          this
-        );
+        if (message.state === "streaming" && !message.content.trim()) {
+          this.renderTypingIndicator(body, message.statusText ?? "Codex is writing");
+        } else {
+          body.addClass("markdown-rendered");
+          await MarkdownRenderer.render(
+            this.app,
+            message.content,
+            body,
+            message.filePath ?? "",
+            this
+          );
+          if (message.state === "streaming") {
+            this.renderInlineTyping(body, message.statusText ?? "Codex is writing");
+          }
+        }
       } else {
         body.createDiv({
           text: message.content,
@@ -538,31 +557,50 @@ class CodexChatView extends ItemView {
       createdAt: new Date().toISOString(),
       filePath: context.file?.path
     };
+    const assistantMessage: ChatMessage = {
+      id: makeId(),
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+      filePath: context.file?.path,
+      state: "streaming",
+      statusText: "Codex is reading"
+    };
 
     this.messages.push(userMessage);
+    this.messages.push(assistantMessage);
     this.inputEl.value = "";
     void this.renderMessages();
     this.setBusy(true);
 
     try {
       const prompt = this.buildPrompt(text, context, priorMessages);
-      const answer = await this.runCodex(prompt);
-      this.messages.push({
-        id: makeId(),
-        role: "assistant",
-        content: answer.trim() || "(empty response)",
-        createdAt: new Date().toISOString(),
-        filePath: context.file?.path
+      const answer = await this.streamCodex(prompt, {
+        onText: (partial) => {
+          assistantMessage.content = partial;
+          assistantMessage.statusText = "Codex is typing";
+          void this.renderMessages();
+        },
+        onStatus: (status) => {
+          assistantMessage.statusText = status;
+          void this.renderMessages();
+        }
       });
+      assistantMessage.content = answer.trim() || "(empty response)";
+      assistantMessage.state = undefined;
+      assistantMessage.statusText = undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.messages.push({
-        id: makeId(),
-        role: "assistant",
-        content: `Codex request failed.\n\n${message}`,
-        createdAt: new Date().toISOString(),
-        filePath: context.file?.path
-      });
+      assistantMessage.state = "error";
+      assistantMessage.statusText = undefined;
+      assistantMessage.content = `Codex request failed.\n\n${message}`;
+      if (!this.messages.some((chatMessage) => chatMessage.id === assistantMessage.id)) {
+        this.messages.push({
+          ...assistantMessage,
+          state: "error",
+          content: `Codex request failed.\n\n${message}`
+        });
+      }
       new Notice("Codex request failed.");
     } finally {
       this.setBusy(false);
@@ -626,7 +664,13 @@ class CodexChatView extends ItemView {
     ].join("\n");
   }
 
-  private runCodex(prompt: string): Promise<string> {
+  private streamCodex(
+    prompt: string,
+    handlers: {
+      onText: (text: string) => void;
+      onStatus: (status: string) => void;
+    }
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const vaultBasePath = this.plugin.getVaultBasePath();
       const codexPath = this.plugin.resolveCodexPath();
@@ -638,6 +682,7 @@ class CodexChatView extends ItemView {
 
       const args = [
         "exec",
+        "--json",
         "--skip-git-repo-check",
         "--ephemeral",
         "--ignore-user-config",
@@ -664,8 +709,10 @@ class CodexChatView extends ItemView {
       });
 
       this.currentProcess = child;
-      let stdout = "";
+      this.cancelRequested = false;
+      let stdoutBuffer = "";
       let stderr = "";
+      let latestAnswer = "";
       let settled = false;
 
       const timeout = window.setTimeout(() => {
@@ -695,7 +742,27 @@ class CodexChatView extends ItemView {
       };
 
       child.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString();
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split("\n");
+        stdoutBuffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const event = parseCodexJsonEvent(line);
+          if (!event) {
+            continue;
+          }
+
+          const status = codexStatusFromEvent(event);
+          if (status) {
+            handlers.onStatus(status);
+          }
+
+          const text = codexTextFromEvent(event);
+          if (text) {
+            latestAnswer = text;
+            handlers.onText(latestAnswer);
+          }
+        }
       });
 
       child.stderr.on("data", (chunk: Buffer) => {
@@ -707,19 +774,49 @@ class CodexChatView extends ItemView {
       });
 
       child.on("close", (code, signal) => {
+        const event = parseCodexJsonEvent(stdoutBuffer);
+        const text = event ? codexTextFromEvent(event) : "";
+        if (text) {
+          latestAnswer = text;
+          handlers.onText(latestAnswer);
+        }
+
         const lastMessage = readAndDeleteTempFile(tempOutput);
         if (code === 0) {
-          finish(null, lastMessage || normalizeCodexStdout(stdout));
+          finish(null, lastMessage || latestAnswer || normalizeCodexStdout(stdoutBuffer));
+          return;
+        }
+
+        if (this.cancelRequested) {
+          finish(null, latestAnswer || "Stopped.");
           return;
         }
 
         const reason = signal ? `signal ${signal}` : `exit code ${code}`;
-        const detail = (stderr || stdout || lastMessage || "").trim();
+        const detail = (stderr || stdoutBuffer || lastMessage || "").trim();
         finish(new Error(`Codex exited with ${reason}.${detail ? `\n\n${detail}` : ""}`));
       });
 
       child.stdin.end(prompt);
     });
+  }
+
+  private renderTypingIndicator(parent: HTMLElement, label: string): void {
+    const typing = parent.createDiv({ cls: "codex-chat-typing" });
+    typing.createSpan({ text: label, cls: "codex-chat-typing-label" });
+    const dots = typing.createSpan({ cls: "codex-chat-typing-dots", attr: { "aria-hidden": "true" } });
+    dots.createSpan();
+    dots.createSpan();
+    dots.createSpan();
+  }
+
+  private renderInlineTyping(parent: HTMLElement, label: string): void {
+    const typing = parent.createDiv({ cls: "codex-chat-inline-typing" });
+    typing.createSpan({ text: label });
+    const dots = typing.createSpan({ cls: "codex-chat-typing-dots", attr: { "aria-hidden": "true" } });
+    dots.createSpan();
+    dots.createSpan();
+    dots.createSpan();
   }
 
   private setBusy(value: boolean): void {
@@ -737,7 +834,7 @@ class CodexChatView extends ItemView {
       this.modelSelectEl.disabled = value;
     }
     if (this.statusEl) {
-      this.statusEl.setText(value ? "thinking" : "ready");
+      this.statusEl.setText(value ? "typing" : "ready");
       this.statusEl.toggleClass("is-busy", value);
     }
   }
@@ -973,6 +1070,49 @@ function readAndDeleteTempFile(filePath: string): string {
     return text;
   } catch {
     return "";
+  }
+}
+
+function parseCodexJsonEvent(line: string): CodexJsonEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return parsed as CodexJsonEvent;
+  } catch {
+    return null;
+  }
+}
+
+function codexTextFromEvent(event: CodexJsonEvent): string {
+  if (event.type !== "item.completed" || event.item?.type !== "agent_message") {
+    return "";
+  }
+
+  return event.item.text ?? "";
+}
+
+function codexStatusFromEvent(event: CodexJsonEvent): string {
+  switch (event.type) {
+    case "thread.started":
+      return "Codex is connecting";
+    case "turn.started":
+      return "Codex is reading";
+    case "item.completed":
+      if (event.item?.type === "agent_message") {
+        return "Codex is typing";
+      }
+      return "Codex is working";
+    case "turn.completed":
+      return "Codex is finishing";
+    default:
+      return "";
   }
 }
 

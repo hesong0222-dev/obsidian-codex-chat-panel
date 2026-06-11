@@ -12,6 +12,8 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 - Sends the active note as context.
 - Sends highlighted text as focused context when you drag-select part of a note.
 - Keeps a small chat history so follow-up questions make sense.
+- Shows when Codex is reading, working, and typing.
+- Streams Codex CLI JSON events into the panel instead of waiting silently.
 - Renders Codex Markdown replies as real headings, lists, links, and code blocks.
 - Lets you choose practical ChatGPT-account Codex models:
   - `gpt-5.5`
@@ -127,11 +129,12 @@ Open `Settings -> Codex Chat Panel`.
 
 ## How It Works
 
-The plugin calls Codex CLI like this:
+The plugin calls Codex CLI in JSON event mode:
 
 ```bash
 codex exec \
   --model gpt-5.5 \
+  --json \
   --skip-git-repo-check \
   --ephemeral \
   --ignore-user-config \
@@ -151,7 +154,7 @@ The prompt includes:
 - recent chat turns
 - latest user message
 
-The plugin reads only Codex's final answer from `--output-last-message`, so noisy CLI logs do not show up in the chat.
+The panel listens to Codex JSONL events for status updates and assistant messages. It still reads `--output-last-message` as a final fallback, so noisy CLI logs do not show up in the chat.
 
 ## Privacy And Safety
 
@@ -221,7 +224,7 @@ The generated Obsidian files are:
 
 ## Release Checklist
 
-1. Bump `version` in `manifest.json`, `package.json`, and `versions.json`.
+1. Bump `version` in `manifest.json`, `package.json`, `package-lock.json`, and `versions.json`.
 2. Run `npm run check`.
 3. Commit changes.
 4. Tag the version:

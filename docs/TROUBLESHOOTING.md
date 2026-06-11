@@ -35,6 +35,16 @@ Also check that `Include selection` is enabled in plugin settings.
 
 Assistant messages should be rendered through Obsidian's Markdown renderer. If you see raw Markdown everywhere, reload Obsidian and confirm you are running the latest `main.js`.
 
+## Codex Looks Stuck On "Typing"
+
+The plugin listens to Codex CLI JSONL events. Check the CLI directly:
+
+```bash
+codex exec --json --model gpt-5.5 --sandbox read-only --skip-git-repo-check "Reply with ok"
+```
+
+If no JSON events appear, update Codex CLI first.
+
 ## Model Is Rejected
 
 Run:
