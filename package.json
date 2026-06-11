@@ -1,0 +1,29 @@
+{
+  "name": "obsidian-codex-chat-panel",
+  "version": "0.1.0",
+  "description": "A VS Code-style Obsidian side panel for chatting with Codex about the active note.",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "install-local": "node scripts/install-local.mjs",
+    "check": "npm run build && node --check main.js"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "codex",
+    "chatgpt",
+    "notes",
+    "markdown",
+    "productivity"
+  ],
+  "author": "Hael Song",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "esbuild": "^0.27.0",
+    "obsidian": "^1.10.8",
+    "typescript": "^5.9.3"
+  }
+}

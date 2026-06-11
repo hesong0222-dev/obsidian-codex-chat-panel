@@ -1,0 +1,11 @@
+{
+  "id": "codex-chat-panel",
+  "name": "Codex Chat Panel",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "A VS Code-style side panel that reads the active note and chats with local Codex CLI.",
+  "author": "Hael Song",
+  "authorUrl": "https://github.com/hesong0222-dev",
+  "fundingUrl": "https://github.com/sponsors/hesong0222-dev",
+  "isDesktopOnly": true
+}
