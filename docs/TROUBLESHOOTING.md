@@ -59,6 +59,8 @@ Then choose a model available to your account.
 
 Edit mode can replace the active file or an exact selected text range. If you selected text in reading mode and the rendered text does not appear verbatim in the Markdown source, the plugin may not be able to apply a selection replacement.
 
+If the note changes after Codex proposes an edit, applying is blocked. Ask Codex to regenerate the edit against the current note.
+
 Try one of these:
 
 - select the text in source mode,

@@ -17,6 +17,7 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 - Shows when Codex is reading, working, and typing.
 - Streams Codex CLI JSON events into the panel instead of waiting silently.
 - Renders Codex Markdown replies as real headings, lists, links, and code blocks.
+- Shows a diff preview before applying Codex edits.
 - Lets you choose practical ChatGPT-account Codex models:
   - `gpt-5.5`
   - `gpt-5.4-mini`
@@ -128,13 +129,16 @@ fix the C code comments in the selected block
 rewrite this note as an exam checklist
 ```
 
-If text is selected, Codex edits that selection. If nothing is selected, Codex edits the whole active note.
+If text is selected, Codex proposes an edit for that selection. If nothing is selected, Codex proposes an edit for the whole active note.
+
+The note is not changed immediately. Review the inline diff, then choose `Apply` or `Reject`.
 
 Edit mode is intentionally scoped:
 
 - It only applies changes to the active note.
 - It uses structured JSON from Codex.
-- The plugin applies the final text through Obsidian's vault API.
+- The plugin applies approved text through Obsidian's vault API.
+- The plugin checks that the note has not changed since the edit was proposed.
 - Large whole-note edits are blocked; select a smaller section instead.
 
 ## Settings
@@ -190,7 +194,7 @@ In Edit mode, Codex must return structured JSON:
 }
 ```
 
-The plugin then applies that result to the active note.
+The plugin then shows a diff preview. The result is written only after you choose `Apply`.
 
 ## Privacy And Safety
 
@@ -201,7 +205,7 @@ Important defaults:
 - Codex runs with `--sandbox read-only`.
 - Calls are `--ephemeral`.
 - The plugin ignores project/user Codex rules for cleaner note Q&A.
-- Edit mode is limited to the active Obsidian note and applies changes through Obsidian, not arbitrary shell writes.
+- Edit mode is limited to the active Obsidian note and applies approved changes through Obsidian, not arbitrary shell writes.
 
 You should still treat selected text and active notes as data you are intentionally sending to Codex.
 

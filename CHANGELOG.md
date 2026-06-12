@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Edit mode now proposes changes before writing to the note.
+- Added an inline diff preview for proposed edits.
+- Added `Apply` and `Reject` controls for each proposed edit.
+- Applying an edit verifies the note has not changed since the proposal was generated.
+
 ## 0.3.1
 
 - Added a floating `Ask in side chat` action when note text is selected.

@@ -43,6 +43,7 @@ interface ChatMessage {
   filePath?: string;
   state?: "streaming" | "error";
   statusText?: string;
+  pendingEdit?: PendingEdit;
 }
 
 type ComposerMode = "chat" | "edit";
@@ -80,6 +81,20 @@ interface EditResult {
   operation: "replace_file" | "replace_selection";
   content: string;
   summary: string;
+}
+
+interface PendingEdit extends EditResult {
+  id: string;
+  file: TFile;
+  filePath: string;
+  baseContent: string;
+  selectedText: string;
+  status: "pending" | "applied" | "rejected";
+}
+
+interface DiffRow {
+  type: "context" | "add" | "remove" | "skip";
+  text: string;
 }
 
 const DEFAULT_SETTINGS: CodexChatSettings = {
@@ -671,6 +686,9 @@ class CodexChatView extends ItemView {
             message.filePath ?? "",
             this
           );
+          if (message.pendingEdit) {
+            this.renderEditReview(body, message);
+          }
           if (message.state === "streaming") {
             this.renderInlineTyping(body, message.statusText ?? "Codex is writing");
           }
@@ -686,6 +704,108 @@ class CodexChatView extends ItemView {
     window.setTimeout(() => {
       this.transcriptEl.scrollTop = this.transcriptEl.scrollHeight;
     }, 0);
+  }
+
+  private renderEditReview(parent: HTMLElement, message: ChatMessage): void {
+    const edit = message.pendingEdit;
+    if (!edit) {
+      return;
+    }
+
+    const review = parent.createDiv({ cls: `codex-chat-edit-review is-${edit.status}` });
+    const header = review.createDiv({ cls: "codex-chat-edit-review-header" });
+    const title = header.createDiv({ cls: "codex-chat-edit-review-title" });
+    const titleIcon = title.createSpan({ cls: "codex-chat-edit-review-icon" });
+    setIcon(titleIcon, edit.operation === "replace_selection" ? "text-select" : "file-pen-line");
+    title.createSpan({
+      text: edit.operation === "replace_selection" ? "Selection edit" : "Whole note edit"
+    });
+    header.createSpan({
+      text: edit.status,
+      cls: "codex-chat-edit-review-state"
+    });
+
+    const diff = review.createDiv({ cls: "codex-chat-diff" });
+    for (const row of buildDiffRows(getEditPreviewBefore(edit), getEditPreviewAfter(edit))) {
+      const line = diff.createDiv({ cls: `codex-chat-diff-line is-${row.type}` });
+      line.createSpan({
+        text: diffPrefix(row.type),
+        cls: "codex-chat-diff-prefix"
+      });
+      line.createSpan({
+        text: row.text,
+        cls: "codex-chat-diff-text"
+      });
+    }
+
+    const actions = review.createDiv({ cls: "codex-chat-edit-review-actions" });
+    const applyButton = actions.createEl("button", {
+      text: "Apply",
+      cls: "codex-chat-review-button codex-chat-review-button-primary",
+      attr: { type: "button" }
+    });
+    const rejectButton = actions.createEl("button", {
+      text: "Reject",
+      cls: "codex-chat-review-button",
+      attr: { type: "button" }
+    });
+
+    const disabled = edit.status !== "pending" || this.busy;
+    applyButton.disabled = disabled;
+    rejectButton.disabled = disabled;
+
+    applyButton.addEventListener("click", () => {
+      void this.applyPendingEdit(message);
+    });
+    rejectButton.addEventListener("click", () => {
+      this.rejectPendingEdit(message);
+    });
+  }
+
+  private async applyPendingEdit(message: ChatMessage): Promise<void> {
+    const edit = message.pendingEdit;
+    if (!edit || edit.status !== "pending") {
+      return;
+    }
+
+    try {
+      const currentContent = await this.plugin.app.vault.read(edit.file);
+      if (currentContent !== edit.baseContent) {
+        throw new Error("The note changed after Codex proposed this edit. Ask Codex to regenerate the edit before applying.");
+      }
+
+      await this.applyEditResult(edit.file, edit.baseContent, edit.selectedText, edit);
+      edit.status = "applied";
+      message.content = [
+        `Applied edit for \`${edit.filePath}\`.`,
+        "",
+        edit.summary
+      ].join("\n");
+      await this.refreshContext();
+      new Notice("Codex edit applied.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      message.state = "error";
+      message.content = `Could not apply Codex edit.\n\n${detail}`;
+      new Notice("Could not apply Codex edit.");
+    } finally {
+      void this.renderMessages();
+    }
+  }
+
+  private rejectPendingEdit(message: ChatMessage): void {
+    const edit = message.pendingEdit;
+    if (!edit || edit.status !== "pending") {
+      return;
+    }
+
+    edit.status = "rejected";
+    message.content = [
+      `Rejected edit for \`${edit.filePath}\`.`,
+      "",
+      edit.summary
+    ].join("\n");
+    void this.renderMessages();
   }
 
   private async sendMessage(): Promise<void> {
@@ -723,11 +843,12 @@ class CodexChatView extends ItemView {
 
     try {
       if (this.mode === "edit") {
-        const result = await this.runEdit(text, context, assistantMessage);
+        const pendingEdit = await this.prepareEdit(text, context, assistantMessage);
+        assistantMessage.pendingEdit = pendingEdit;
         assistantMessage.content = [
-          `Edited \`${context.path}\`.`,
+          `Proposed edit for \`${context.path}\`.`,
           "",
-          result.summary
+          pendingEdit.summary
         ].join("\n");
       } else {
         const prompt = this.buildPrompt(text, context, priorMessages);
@@ -766,11 +887,11 @@ class CodexChatView extends ItemView {
     }
   }
 
-  private async runEdit(
+  private async prepareEdit(
     userText: string,
     context: ActiveFileContext,
     assistantMessage: ChatMessage
-  ): Promise<EditResult> {
+  ): Promise<PendingEdit> {
     if (!context.file) {
       throw new Error("No active note to edit.");
     }
@@ -813,9 +934,15 @@ class CodexChatView extends ItemView {
       throw new Error("Codex did not return a valid edit payload.");
     }
 
-    await this.applyEditResult(context.file, fullContent, selectedText, result);
-    await this.refreshContext();
-    return result;
+    return {
+      ...result,
+      id: makeId(),
+      file: context.file,
+      filePath: context.path,
+      baseContent: fullContent,
+      selectedText,
+      status: "pending"
+    };
   }
 
   private buildEditPrompt(userText: string, context: ActiveFileContext, fullContent: string): string {
@@ -1463,6 +1590,81 @@ function parseEditResult(text: string): EditResult | null {
   }
 
   return null;
+}
+
+function getEditPreviewBefore(edit: PendingEdit): string {
+  return edit.operation === "replace_selection"
+    ? edit.selectedText
+    : edit.baseContent;
+}
+
+function getEditPreviewAfter(edit: PendingEdit): string {
+  return edit.content;
+}
+
+function diffPrefix(type: DiffRow["type"]): string {
+  switch (type) {
+    case "add":
+      return "+";
+    case "remove":
+      return "-";
+    case "skip":
+      return "...";
+    default:
+      return " ";
+  }
+}
+
+function buildDiffRows(beforeText: string, afterText: string): DiffRow[] {
+  const before = beforeText.split("\n");
+  const after = afterText.split("\n");
+  let prefix = 0;
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) {
+    prefix += 1;
+  }
+
+  let suffix = 0;
+  while (
+    suffix + prefix < before.length &&
+    suffix + prefix < after.length &&
+    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+
+  const rows: DiffRow[] = [];
+  const contextBefore = before.slice(Math.max(0, prefix - 3), prefix);
+  if (prefix > 3) {
+    rows.push({ type: "skip", text: `${prefix - 3} unchanged line${prefix - 3 === 1 ? "" : "s"}` });
+  }
+  rows.push(...contextBefore.map((text) => ({ type: "context" as const, text })));
+
+  const removed = before.slice(prefix, before.length - suffix);
+  const added = after.slice(prefix, after.length - suffix);
+  rows.push(...removed.map((text) => ({ type: "remove" as const, text })));
+  rows.push(...added.map((text) => ({ type: "add" as const, text })));
+
+  const contextAfter = before.slice(before.length - suffix, before.length - Math.max(0, suffix - 3));
+  rows.push(...contextAfter.map((text) => ({ type: "context" as const, text })));
+  if (suffix > 3) {
+    rows.push({ type: "skip", text: `${suffix - 3} unchanged line${suffix - 3 === 1 ? "" : "s"}` });
+  }
+
+  return clipDiffRows(rows, 160);
+}
+
+function clipDiffRows(rows: DiffRow[], maxRows: number): DiffRow[] {
+  if (rows.length <= maxRows) {
+    return rows;
+  }
+
+  const headCount = Math.floor((maxRows - 1) / 2);
+  const tailCount = maxRows - 1 - headCount;
+  return [
+    ...rows.slice(0, headCount),
+    { type: "skip", text: `${rows.length - headCount - tailCount} diff line${rows.length - headCount - tailCount === 1 ? "" : "s"} hidden` },
+    ...rows.slice(rows.length - tailCount)
+  ];
 }
 
 function parseCodexJsonEvent(line: string): CodexJsonEvent | null {

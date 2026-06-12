@@ -29,12 +29,14 @@ These defaults are meant to keep note Q&A predictable and avoid accidental file 
 
 ## Edit Mode
 
-Edit mode can modify the active Obsidian note. Codex returns a structured edit payload and the plugin applies it with Obsidian's vault API.
+Edit mode can modify the active Obsidian note after user approval. Codex returns a structured edit payload, the plugin shows a diff preview, and the plugin applies approved edits with Obsidian's vault API.
 
 The scope is intentionally narrow:
 
 - active note only,
 - selected text or whole note only,
+- diff review before applying,
+- stale-edit detection before writing,
 - no arbitrary shell writes,
 - no multi-file edits.
 
