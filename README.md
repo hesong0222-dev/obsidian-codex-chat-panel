@@ -11,6 +11,7 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 - Opens as a right-side Obsidian panel.
 - Sends the active note as context.
 - Sends highlighted text as focused context when you drag-select part of a note.
+- Lets you attach a few extra Markdown files as labeled chat context.
 - Shows quick actions beside selected note text for one-click selection workflows.
 - Can edit the active note or highlighted selection in `Edit` mode.
 - Keeps a small chat history so follow-up questions make sense.
@@ -94,6 +95,12 @@ The panel also adds a ribbon icon.
 Open a note, type a question, and press `Enter`.
 
 Use `Shift+Enter` for a new line.
+
+### Add Extra Context
+
+Use `Add context...` in the panel context bar to attach additional Markdown files. Added files appear as chips and are sent as labeled extra context.
+
+The active note remains the primary source. Extra files are included only to help with related notes, references, or nearby lecture material.
 
 ### Ask About a Selection
 
@@ -190,6 +197,7 @@ The prompt includes:
 - active note path
 - active note content
 - highlighted selection, if any
+- extra context files, if any
 - recent chat turns
 - latest user message
 

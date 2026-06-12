@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+- Added a compact context picker for adding extra Markdown files to chat context.
+- Added visible context chips with remove controls.
+- Chat prompts now label extra context files separately from the active note.
+
 ## 0.5.0
 
 - Expanded the floating selection action into quick actions.

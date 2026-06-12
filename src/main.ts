@@ -52,7 +52,15 @@ interface ActiveFileContext {
   file: TFile | null;
   path: string;
   content: string;
+  extraFiles: ExtraFileContext[];
   selection: string;
+  originalChars: number;
+  clipped: boolean;
+}
+
+interface ExtraFileContext {
+  path: string;
+  content: string;
   originalChars: number;
   clipped: boolean;
 }
@@ -493,6 +501,7 @@ class CodexChatView extends ItemView {
   private plugin: CodexChatPlugin;
   private messages: ChatMessage[] = [];
   private activeContext: ActiveFileContext = emptyContext();
+  private extraContextFiles: TFile[] = [];
   private currentProcess: ChildProcessWithoutNullStreams | null = null;
   private currentTempOutput: string | null = null;
   private rootEl!: HTMLElement;
@@ -577,17 +586,38 @@ class CodexChatView extends ItemView {
     const rawContent = await this.plugin.app.vault.cachedRead(file);
     const clipped = clipText(rawContent, this.plugin.settings.maxContextChars);
     const selection = this.plugin.getSelectionForContext(file);
+    const extraFiles = await this.readExtraFileContexts(file);
 
     this.activeContext = {
       file,
       path: file.path,
       content: clipped.text,
+      extraFiles,
       selection,
       originalChars: rawContent.length,
       clipped: clipped.clipped
     };
 
     this.renderContext();
+  }
+
+  private async readExtraFileContexts(activeFile: TFile): Promise<ExtraFileContext[]> {
+    this.extraContextFiles = this.extraContextFiles.filter((file) => {
+      return file.path !== activeFile.path && this.plugin.app.vault.getAbstractFileByPath(file.path) === file;
+    });
+
+    const contexts: ExtraFileContext[] = [];
+    for (const file of this.extraContextFiles) {
+      const rawContent = await this.plugin.app.vault.cachedRead(file);
+      const clipped = clipText(rawContent, this.plugin.settings.maxContextChars);
+      contexts.push({
+        path: file.path,
+        content: clipped.text,
+        originalChars: rawContent.length,
+        clipped: clipped.clipped
+      });
+    }
+    return contexts;
   }
 
   setSelectionPreview(filePath: string, selection: string): void {
@@ -693,6 +723,83 @@ class CodexChatView extends ItemView {
       });
     }
 
+    this.renderExtraContextControls();
+  }
+
+  private renderExtraContextControls(): void {
+    if (!this.activeContext.file) {
+      return;
+    }
+
+    const wrapper = this.contextEl.createDiv({ cls: "codex-chat-extra-context" });
+    const chips = wrapper.createDiv({ cls: "codex-chat-extra-context-chips" });
+
+    for (const extra of this.activeContext.extraFiles) {
+      const chip = chips.createDiv({ cls: "codex-chat-extra-context-chip" });
+      const icon = chip.createSpan({ cls: "codex-chat-extra-context-icon" });
+      setIcon(icon, "file-plus-2");
+      chip.createSpan({
+        text: extra.path,
+        cls: "codex-chat-extra-context-path"
+      });
+      const removeButton = chip.createEl("button", {
+        cls: "codex-chat-extra-context-remove",
+        attr: {
+          type: "button",
+          "aria-label": `Remove ${extra.path}`
+        }
+      });
+      setIcon(removeButton, "x");
+      removeButton.addEventListener("click", () => {
+        this.removeExtraContextFile(extra.path);
+      });
+    }
+
+    const picker = wrapper.createEl("select", {
+      cls: "codex-chat-extra-context-picker",
+      attr: { "aria-label": "Add context file" }
+    });
+    picker.createEl("option", { text: "Add context...", value: "" });
+    for (const file of this.getAvailableExtraContextFiles()) {
+      picker.createEl("option", {
+        text: file.path,
+        value: file.path
+      });
+    }
+    picker.addEventListener("change", () => {
+      if (picker.value) {
+        this.addExtraContextFile(picker.value);
+      }
+    });
+  }
+
+  private getAvailableExtraContextFiles(): TFile[] {
+    const activePath = this.activeContext.file?.path ?? "";
+    const selected = new Set(this.extraContextFiles.map((file) => file.path));
+    return this.plugin.app.vault.getMarkdownFiles()
+      .filter((file) => file.path !== activePath && !selected.has(file.path))
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .slice(0, 200);
+  }
+
+  private addExtraContextFile(pathValue: string): void {
+    const file = this.plugin.app.vault.getAbstractFileByPath(pathValue);
+    if (!(file instanceof TFile) || file.extension !== "md") {
+      new Notice("Choose a Markdown file for context.");
+      return;
+    }
+
+    if (this.extraContextFiles.some((existing) => existing.path === file.path)) {
+      return;
+    }
+
+    this.extraContextFiles = [...this.extraContextFiles, file].slice(-6);
+    void this.refreshContext();
+  }
+
+  private removeExtraContextFile(pathValue: string): void {
+    this.extraContextFiles = this.extraContextFiles.filter((file) => file.path !== pathValue);
+    void this.refreshContext();
   }
 
   private async renderMessages(): Promise<void> {
@@ -1100,11 +1207,18 @@ class CodexChatView extends ItemView {
         "</selection>"
       ].join("\n")
       : "<selection omitted=\"true\" />";
+    const extraContextBlock = context.extraFiles.length > 0
+      ? context.extraFiles.map((extraFile) => [
+        `<extra_context_file path="${escapeAttribute(extraFile.path)}" clipped="${extraFile.clipped ? "true" : "false"}">`,
+        extraFile.content,
+        "</extra_context_file>"
+      ].join("\n")).join("\n\n")
+      : "<extra_context omitted=\"true\" />";
 
     return [
       "You are Codex running inside an Obsidian side panel.",
       languageInstruction,
-      "Use the active file context as the primary source. If the context is insufficient, say what is missing.",
+      "Use the active file context as the primary source. Use extra context files only when they are relevant.",
       "Be direct and practical. Do not claim to have edited files unless the user explicitly asks for edits and you actually make them.",
       "For code or study material, point to the specific function, concept, line pattern, or section when useful.",
       "",
@@ -1113,6 +1227,8 @@ class CodexChatView extends ItemView {
       activeFileBlock,
       "",
       selectionBlock,
+      "",
+      extraContextBlock,
       "",
       "<recent_chat>",
       history,
@@ -1524,6 +1640,7 @@ function emptyContext(): ActiveFileContext {
     file: null,
     path: "",
     content: "",
+    extraFiles: [],
     selection: "",
     originalChars: 0,
     clipped: false
