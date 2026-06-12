@@ -9,6 +9,7 @@ import {
   Setting,
   TFile,
   WorkspaceLeaf,
+  normalizePath,
   setIcon
 } from "obsidian";
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
@@ -19,6 +20,7 @@ import * as path from "path";
 const VIEW_TYPE_CODEX_CHAT = "codex-chat-panel-view";
 const PLUGIN_ID = "codex-chat-panel";
 const ASSISTANT_NAME = "Codex";
+const CHAT_HISTORY_FOLDER = "Codex Chat History";
 const MODEL_CHOICES = [
   { value: "gpt-5.5", label: "GPT-5.5" },
   { value: "gpt-5.4-mini", label: "GPT-5.4 mini" },
@@ -646,6 +648,9 @@ class CodexChatView extends ItemView {
     this.makeIconButton(actions, "refresh-cw", "Refresh file context", () => {
       void this.refreshContext();
     });
+    this.makeIconButton(actions, "save", "Save chat as Markdown", () => {
+      void this.saveChatHistory();
+    });
     this.makeIconButton(actions, "trash-2", "Clear chat", () => {
       this.messages = [];
       void this.renderMessages();
@@ -977,6 +982,80 @@ class CodexChatView extends ItemView {
       edit.summary
     ].join("\n");
     void this.renderMessages();
+  }
+
+  private async saveChatHistory(): Promise<void> {
+    if (this.messages.length === 0) {
+      new Notice("No Codex chat to save yet.");
+      return;
+    }
+
+    await this.refreshContext();
+    const filePath = await this.nextChatHistoryPath();
+    const markdown = this.buildChatHistoryMarkdown(filePath);
+    await this.plugin.app.vault.create(filePath, markdown);
+    new Notice(`Saved Codex chat to ${filePath}`);
+  }
+
+  private async nextChatHistoryPath(): Promise<string> {
+    await ensureVaultFolder(this.plugin.app, CHAT_HISTORY_FOLDER);
+    const now = new Date();
+    const stamp = formatLocalTimestampForFile(now);
+    const sourceName = this.activeContext.file
+      ? this.activeContext.file.basename
+      : "chat";
+    const baseName = sanitizeFileName(`${stamp} ${sourceName}`);
+
+    for (let index = 0; index < 100; index += 1) {
+      const suffix = index === 0 ? "" : `-${index + 1}`;
+      const candidate = normalizePath(`${CHAT_HISTORY_FOLDER}/${baseName}${suffix}.md`);
+      if (!this.plugin.app.vault.getAbstractFileByPath(candidate)) {
+        return candidate;
+      }
+    }
+
+    return normalizePath(`${CHAT_HISTORY_FOLDER}/${baseName}-${Date.now()}.md`);
+  }
+
+  private buildChatHistoryMarkdown(filePath: string): string {
+    const created = new Date().toISOString();
+    const sourcePath = this.activeContext.path || "";
+    const selection = this.activeContext.selection.trim();
+    const extraContext = this.activeContext.extraFiles;
+    const body = [
+      "---",
+      "codex_chat: true",
+      `created: ${JSON.stringify(created)}`,
+      `model: ${JSON.stringify(this.plugin.resolveModel())}`,
+      `source: ${JSON.stringify(sourcePath)}`,
+      `message_count: ${this.messages.length}`,
+      "---",
+      "",
+      `# Codex Chat - ${sourcePath || "Untitled"}`,
+      "",
+      "## Context",
+      "",
+      sourcePath ? `- Active note: [[${sourcePath}]]` : "- Active note: none",
+      selection ? `- Selection: ${selection.length} chars` : "- Selection: none",
+      extraContext.length > 0
+        ? `- Extra context: ${extraContext.map((extra) => `[[${extra.path}]]`).join(", ")}`
+        : "- Extra context: none",
+      `- Saved file: ${filePath}`,
+      "",
+      selection
+        ? [
+          "## Selection Excerpt",
+          "",
+          blockquote(clipText(selection, 1200).text),
+          ""
+        ].join("\n")
+        : "",
+      "## Conversation",
+      "",
+      ...this.messages.map((message) => formatMessageForHistory(message))
+    ];
+
+    return body.filter((part) => part !== "").join("\n");
   }
 
   private async sendMessage(): Promise<void> {
@@ -1846,6 +1925,61 @@ function clipDiffRows(rows: DiffRow[], maxRows: number): DiffRow[] {
     { type: "skip", text: `${rows.length - headCount - tailCount} diff line${rows.length - headCount - tailCount === 1 ? "" : "s"} hidden` },
     ...rows.slice(rows.length - tailCount)
   ];
+}
+
+async function ensureVaultFolder(app: App, folderPath: string): Promise<void> {
+  const normalized = normalizePath(folderPath);
+  if (app.vault.getAbstractFileByPath(normalized)) {
+    return;
+  }
+  await app.vault.createFolder(normalized);
+}
+
+function formatLocalTimestampForFile(date: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join("-") + " " + [
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds())
+  ].join("-");
+}
+
+function sanitizeFileName(value: string): string {
+  return value
+    .replace(/[\\/:*?"<>|#^\[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || "codex-chat";
+}
+
+function blockquote(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function formatMessageForHistory(message: ChatMessage): string {
+  const title = message.role === "user" ? "You" : ASSISTANT_NAME;
+  const parts = [
+    `### ${title} - ${message.createdAt}`,
+    "",
+    message.content.trim() || "(empty)"
+  ];
+
+  if (message.pendingEdit) {
+    parts.push(
+      "",
+      `Edit proposal: ${message.pendingEdit.operation}`,
+      `Edit status: ${message.pendingEdit.status}`
+    );
+  }
+
+  return parts.join("\n");
 }
 
 function parseCodexJsonEvent(line: string): CodexJsonEvent | null {

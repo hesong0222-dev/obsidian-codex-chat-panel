@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+- Added opt-in Markdown chat history export.
+- Saved chats go to `Codex Chat History/` inside the vault.
+- History files include model, source note, selection summary, extra context, timestamps, messages, and edit proposal status.
+
 ## 0.6.0
 
 - Added a compact context picker for adding extra Markdown files to chat context.

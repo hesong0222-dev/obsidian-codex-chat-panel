@@ -14,6 +14,7 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 - Lets you attach a few extra Markdown files as labeled chat context.
 - Shows quick actions beside selected note text for one-click selection workflows.
 - Can edit the active note or highlighted selection in `Edit` mode.
+- Can save the current conversation as a Markdown note inside the vault.
 - Keeps a small chat history so follow-up questions make sense.
 - Shows when Codex is reading, working, and typing.
 - Streams Codex CLI JSON events into the panel instead of waiting silently.
@@ -134,6 +135,18 @@ The model picker sits next to the send button.
 
 The plugin only shows models that are practical for Codex with a ChatGPT account.
 
+### Save a Chat
+
+Click the save icon in the panel header to export the current conversation as Markdown.
+
+Saved chats are written to:
+
+```text
+Codex Chat History/
+```
+
+The saved note includes model, source note, selected-text summary, extra context files, timestamps, messages, and edit proposal status.
+
 ### Edit the Current Note
 
 Switch `Mode` from `Chat` to `Edit`, then describe the change you want.
@@ -218,6 +231,8 @@ The plugin then shows a diff preview. The result is written only after you choos
 ## Privacy And Safety
 
 This plugin sends note content to Codex through your local Codex CLI session. It does not run its own server and does not store chat transcripts outside Obsidian's plugin runtime.
+
+Chat history export is opt-in. When used, transcripts are written as Markdown files inside your own vault.
 
 Important defaults:
 
