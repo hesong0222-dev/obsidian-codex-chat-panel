@@ -34,6 +34,7 @@ Planned demo checklist:
 - Lets you attach a few extra Markdown files as labeled chat context.
 - Shows quick actions beside selected note text for one-click selection workflows.
 - Can edit the active note or highlighted selection in `Edit` mode.
+- Includes safe `Agent` mode for reviewed plans and multi-file proposals.
 - Can save the current conversation as a Markdown note inside the vault.
 - Keeps a small chat history so follow-up questions make sense.
 - Shows when Codex is reading, working, and typing.
@@ -192,6 +193,24 @@ Edit mode is intentionally scoped:
 - The plugin checks that the note has not changed since the edit was proposed.
 - Large whole-note edits are blocked; select a smaller section instead.
 
+### Use Safe Agent Mode
+
+Switch `Mode` to `Agent` when you want Codex to plan a larger note workflow.
+
+Agent mode can inspect:
+
+- the active note,
+- selected text,
+- Markdown files you explicitly add with `Add context...`.
+
+Agent mode returns:
+
+- a short plan,
+- zero or more proposed edits,
+- one reviewable diff per proposed file change.
+
+Agent mode does not apply changes automatically. Each proposed edit has its own `Apply` and `Reject` controls, and applying verifies that the file has not changed since the proposal was generated.
+
 ## Settings
 
 Open `Settings -> Codex Chat Panel`.
@@ -260,6 +279,7 @@ Important defaults:
 - Calls are `--ephemeral`.
 - The plugin ignores project/user Codex rules for cleaner note Q&A.
 - Edit mode is limited to the active Obsidian note and applies approved changes through Obsidian, not arbitrary shell writes.
+- Agent mode is limited to active/attached Markdown files and applies only user-approved reviewed edits.
 
 You should still treat selected text and active notes as data you are intentionally sending to Codex.
 

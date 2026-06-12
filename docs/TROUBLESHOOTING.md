@@ -67,3 +67,14 @@ Try one of these:
 - ask for a whole-note edit,
 - select a smaller section,
 - simplify the edit request.
+
+## Agent Mode Did Not Propose Edits
+
+Agent mode may return a plan without edits when the request is broad, the relevant file is not attached, or a note is too large for safe whole-file editing.
+
+Try one of these:
+
+- attach the related Markdown file with `Add context...`,
+- select the exact section you want changed,
+- ask for a narrower edit,
+- split very large notes before whole-note agent work.

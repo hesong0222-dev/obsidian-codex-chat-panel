@@ -40,6 +40,19 @@ The scope is intentionally narrow:
 - no arbitrary shell writes,
 - no multi-file edits.
 
+## Agent Mode
+
+Agent mode can propose changes across the active note and Markdown files the user explicitly attached as extra context.
+
+Agent mode is reviewed by design:
+
+- Codex returns a structured plan and edit list,
+- edits outside the allowed file list are rejected,
+- every proposed file change is shown as a diff,
+- each edit requires explicit `Apply`,
+- stale-content checks run before writing,
+- failures leave the vault unchanged.
+
 ## Reporting Issues
 
 Please open a GitHub issue for security-sensitive behavior that does not expose private data. If private data is involved, open a minimal issue first and describe the category of problem without including the sensitive content.

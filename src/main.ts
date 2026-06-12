@@ -46,9 +46,10 @@ interface ChatMessage {
   state?: "streaming" | "error";
   statusText?: string;
   pendingEdit?: PendingEdit;
+  pendingEdits?: PendingEdit[];
 }
 
-type ComposerMode = "chat" | "edit";
+type ComposerMode = "chat" | "edit" | "agent";
 
 interface ActiveFileContext {
   file: TFile | null;
@@ -105,6 +106,22 @@ interface PendingEdit extends EditResult {
 interface DiffRow {
   type: "context" | "add" | "remove" | "skip";
   text: string;
+}
+
+interface AgentEditResult extends EditResult {
+  path: string;
+}
+
+interface AgentResult {
+  summary: string;
+  plan: string[];
+  edits: AgentEditResult[];
+}
+
+interface PreparedAgentResult {
+  summary: string;
+  plan: string[];
+  pendingEdits: PendingEdit[];
 }
 
 interface SelectionQuickAction {
@@ -558,9 +575,7 @@ class CodexChatView extends ItemView {
     this.setMode(mode);
     if (this.inputEl) {
       this.inputEl.value = prompt;
-      this.inputEl.placeholder = mode === "edit"
-        ? "Tell Codex how to edit the selected text"
-        : "Ask Codex about the selected text";
+      this.inputEl.placeholder = placeholderForMode(mode, true);
     }
     this.focusComposer();
   }
@@ -862,8 +877,11 @@ class CodexChatView extends ItemView {
             message.filePath ?? "",
             this
           );
-          if (message.pendingEdit) {
-            this.renderEditReview(body, message);
+          const pendingEdits = getMessagePendingEdits(message);
+          if (pendingEdits.length > 0) {
+            for (const edit of pendingEdits) {
+              this.renderEditReview(body, message, edit);
+            }
           }
           if (message.state === "streaming") {
             this.renderInlineTyping(body, message.statusText ?? "Codex is writing");
@@ -882,19 +900,14 @@ class CodexChatView extends ItemView {
     }, 0);
   }
 
-  private renderEditReview(parent: HTMLElement, message: ChatMessage): void {
-    const edit = message.pendingEdit;
-    if (!edit) {
-      return;
-    }
-
+  private renderEditReview(parent: HTMLElement, message: ChatMessage, edit: PendingEdit): void {
     const review = parent.createDiv({ cls: `codex-chat-edit-review is-${edit.status}` });
     const header = review.createDiv({ cls: "codex-chat-edit-review-header" });
     const title = header.createDiv({ cls: "codex-chat-edit-review-title" });
     const titleIcon = title.createSpan({ cls: "codex-chat-edit-review-icon" });
     setIcon(titleIcon, edit.operation === "replace_selection" ? "text-select" : "file-pen-line");
     title.createSpan({
-      text: edit.operation === "replace_selection" ? "Selection edit" : "Whole note edit"
+      text: `${edit.operation === "replace_selection" ? "Selection edit" : "Whole note edit"}: ${edit.filePath}`
     });
     header.createSpan({
       text: edit.status,
@@ -931,15 +944,14 @@ class CodexChatView extends ItemView {
     rejectButton.disabled = disabled;
 
     applyButton.addEventListener("click", () => {
-      void this.applyPendingEdit(message);
+      void this.applyPendingEdit(message, edit);
     });
     rejectButton.addEventListener("click", () => {
-      this.rejectPendingEdit(message);
+      this.rejectPendingEdit(message, edit);
     });
   }
 
-  private async applyPendingEdit(message: ChatMessage): Promise<void> {
-    const edit = message.pendingEdit;
+  private async applyPendingEdit(message: ChatMessage, edit: PendingEdit): Promise<void> {
     if (!edit || edit.status !== "pending") {
       return;
     }
@@ -952,11 +964,13 @@ class CodexChatView extends ItemView {
 
       await this.applyEditResult(edit.file, edit.baseContent, edit.selectedText, edit);
       edit.status = "applied";
-      message.content = [
-        `Applied edit for \`${edit.filePath}\`.`,
-        "",
-        edit.summary
-      ].join("\n");
+      if (message.pendingEdit === edit) {
+        message.content = [
+          `Applied edit for \`${edit.filePath}\`.`,
+          "",
+          edit.summary
+        ].join("\n");
+      }
       await this.refreshContext();
       new Notice("Codex edit applied.");
     } catch (error) {
@@ -969,18 +983,19 @@ class CodexChatView extends ItemView {
     }
   }
 
-  private rejectPendingEdit(message: ChatMessage): void {
-    const edit = message.pendingEdit;
+  private rejectPendingEdit(message: ChatMessage, edit: PendingEdit): void {
     if (!edit || edit.status !== "pending") {
       return;
     }
 
     edit.status = "rejected";
-    message.content = [
-      `Rejected edit for \`${edit.filePath}\`.`,
-      "",
-      edit.summary
-    ].join("\n");
+    if (message.pendingEdit === edit) {
+      message.content = [
+        `Rejected edit for \`${edit.filePath}\`.`,
+        "",
+        edit.summary
+      ].join("\n");
+    }
     void this.renderMessages();
   }
 
@@ -1100,6 +1115,10 @@ class CodexChatView extends ItemView {
           "",
           pendingEdit.summary
         ].join("\n");
+      } else if (this.mode === "agent") {
+        const agentResult = await this.prepareAgent(text, context, assistantMessage);
+        assistantMessage.pendingEdits = agentResult.pendingEdits;
+        assistantMessage.content = formatAgentMessage(agentResult.summary, agentResult.plan, agentResult.pendingEdits.length);
       } else {
         const prompt = this.buildPrompt(text, context, priorMessages);
         const answer = await this.streamCodex(prompt, {
@@ -1195,6 +1214,124 @@ class CodexChatView extends ItemView {
     };
   }
 
+  private async prepareAgent(
+    userText: string,
+    context: ActiveFileContext,
+    assistantMessage: ChatMessage
+  ): Promise<PreparedAgentResult> {
+    if (!context.file) {
+      throw new Error("No active note for agent mode.");
+    }
+
+    const editableFiles = await this.buildEditableFileMap(context);
+    assistantMessage.statusText = "Codex is planning";
+    void this.renderMessages();
+
+    const prompt = this.buildAgentPrompt(userText, context, editableFiles);
+    const resultText = await this.streamCodex(prompt, {
+      outputSchema: buildAgentOutputSchema(),
+      onText: (partial) => {
+        assistantMessage.content = "Preparing agent plan...";
+        assistantMessage.statusText = "Codex is preparing reviewed changes";
+        if (partial.trim()) {
+          const parsed = parseAgentResult(partial);
+          if (parsed?.summary) {
+            assistantMessage.content = parsed.summary;
+          }
+        }
+        void this.renderMessages();
+      },
+      onStatus: (status) => {
+        assistantMessage.statusText = status;
+        void this.renderMessages();
+      }
+    });
+
+    const result = parseAgentResult(resultText);
+    if (!result) {
+      throw new Error("Codex did not return a valid agent payload.");
+    }
+
+    const pendingEdits = result.edits.map((edit) => {
+      const editable = editableFiles.get(edit.path);
+      if (!editable) {
+        throw new Error(`Agent proposed an edit outside the allowed context: ${edit.path}`);
+      }
+      if (edit.operation === "replace_selection" && edit.path !== context.path) {
+        throw new Error("Selection edits are only allowed for the active note.");
+      }
+      if (edit.operation === "replace_selection" && !editable.selectedText.trim()) {
+        throw new Error("Agent proposed a selection edit, but no active selection is available.");
+      }
+      if (edit.operation === "replace_selection" && !editable.baseContent.includes(editable.selectedText)) {
+        throw new Error("Agent proposed a stale selection edit.");
+      }
+
+      return {
+        operation: edit.operation,
+        content: edit.content,
+        summary: edit.summary,
+        id: makeId(),
+        file: editable.file,
+        filePath: editable.file.path,
+        baseContent: editable.baseContent,
+        selectedText: edit.operation === "replace_selection" ? editable.selectedText : "",
+        status: "pending" as const
+      };
+    });
+
+    return {
+      summary: result.summary,
+      plan: result.plan,
+      pendingEdits
+    };
+  }
+
+  private async buildEditableFileMap(context: ActiveFileContext): Promise<Map<string, {
+    file: TFile;
+    baseContent: string;
+    promptContent: string;
+    selectedText: string;
+  }>> {
+    const files = new Map<string, {
+      file: TFile;
+      baseContent: string;
+      promptContent: string;
+      selectedText: string;
+    }>();
+
+    if (context.file) {
+      const baseContent = await this.plugin.app.vault.read(context.file);
+      if (baseContent.length > this.plugin.settings.maxContextChars && !context.selection.trim()) {
+        throw new Error("This note is too large for whole-note Agent mode. Select a smaller section or reduce context size.");
+      }
+      files.set(context.file.path, {
+        file: context.file,
+        baseContent,
+        promptContent: clipText(baseContent, this.plugin.settings.maxContextChars).text,
+        selectedText: context.selection
+      });
+    }
+
+    for (const extra of this.extraContextFiles) {
+      if (files.has(extra.path)) {
+        continue;
+      }
+      const rawContent = await this.plugin.app.vault.read(extra);
+      if (rawContent.length > this.plugin.settings.maxContextChars) {
+        continue;
+      }
+      files.set(extra.path, {
+        file: extra,
+        baseContent: rawContent,
+        promptContent: rawContent,
+        selectedText: ""
+      });
+    }
+
+    return files;
+  }
+
   private buildEditPrompt(userText: string, context: ActiveFileContext, fullContent: string): string {
     const selectedText = context.selection;
     const hasSelection = selectedText.trim().length > 0;
@@ -1226,6 +1363,51 @@ class CodexChatView extends ItemView {
       "<edit_request>",
       userText,
       "</edit_request>"
+    ].join("\n");
+  }
+
+  private buildAgentPrompt(
+    userText: string,
+    context: ActiveFileContext,
+    editableFiles: Map<string, { file: TFile; baseContent: string; promptContent: string; selectedText: string }>
+  ): string {
+    const editableFileBlocks = Array.from(editableFiles.values()).map((editable) => {
+      const selectedText = editable.file.path === context.path ? editable.selectedText : "";
+      return [
+        `<editable_file path="${escapeAttribute(editable.file.path)}" selected="${selectedText.trim() ? "true" : "false"}">`,
+        editable.promptContent,
+        "</editable_file>",
+        selectedText.trim()
+          ? [
+            `<selection path="${escapeAttribute(editable.file.path)}">`,
+            selectedText,
+            "</selection>"
+          ].join("\n")
+          : ""
+      ].filter(Boolean).join("\n");
+    }).join("\n\n");
+
+    return [
+      "You are Codex running in safe Agent mode inside Obsidian.",
+      "Return only JSON matching the provided schema.",
+      "Do not include Markdown fences around the JSON.",
+      "First make a concise plan. Then propose zero or more reviewed edits.",
+      "You may only propose edits for files listed in <editable_files>.",
+      "Do not invent file paths.",
+      "Do not claim edits are applied. The user must review and apply every proposed edit.",
+      "For replace_file, content must be the complete updated Markdown file.",
+      "For replace_selection, use it only for the active note selection and return only replacement Markdown for that selection.",
+      "Preserve YAML frontmatter, wikilinks, Markdown links, code fences, headings, and surrounding structure unless the user explicitly asks to change them.",
+      "",
+      `Active file path: ${context.path}`,
+      "",
+      "<editable_files>",
+      editableFileBlocks,
+      "</editable_files>",
+      "",
+      "<agent_request>",
+      userText,
+      "</agent_request>"
     ].join("\n");
   }
 
@@ -1519,9 +1701,10 @@ class CodexChatView extends ItemView {
     });
     this.modeSelectEl.createEl("option", { text: "Chat", value: "chat" });
     this.modeSelectEl.createEl("option", { text: "Edit", value: "edit" });
+    this.modeSelectEl.createEl("option", { text: "Agent", value: "agent" });
     this.modeSelectEl.value = this.mode;
     this.modeSelectEl.addEventListener("change", () => {
-      this.setMode(this.modeSelectEl.value === "edit" ? "edit" : "chat");
+      this.setMode(parseComposerMode(this.modeSelectEl.value));
     });
   }
 
@@ -1531,9 +1714,7 @@ class CodexChatView extends ItemView {
       this.modeSelectEl.value = mode;
     }
     if (this.inputEl) {
-      this.inputEl.placeholder = mode === "edit"
-        ? "Tell Codex how to edit this note"
-        : "Ask Codex about the active file";
+      this.inputEl.placeholder = placeholderForMode(mode, false);
     }
   }
 
@@ -1726,6 +1907,29 @@ function emptyContext(): ActiveFileContext {
   };
 }
 
+function parseComposerMode(value: string): ComposerMode {
+  if (value === "edit" || value === "agent") {
+    return value;
+  }
+  return "chat";
+}
+
+function placeholderForMode(mode: ComposerMode, hasSelection: boolean): string {
+  if (mode === "agent") {
+    return hasSelection
+      ? "Ask Codex to plan reviewed changes for this selection"
+      : "Ask Codex to plan reviewed changes";
+  }
+  if (mode === "edit") {
+    return hasSelection
+      ? "Tell Codex how to edit the selected text"
+      : "Tell Codex how to edit this note";
+  }
+  return hasSelection
+    ? "Ask Codex about the selected text"
+    : "Ask Codex about the active file";
+}
+
 function nodeToElement(node: Node | null): Element | null {
   if (!node) {
     return null;
@@ -1850,6 +2054,101 @@ function parseEditResult(text: string): EditResult | null {
   }
 
   return null;
+}
+
+function buildAgentOutputSchema(): object {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      plan: {
+        type: "array",
+        items: { type: "string" }
+      },
+      edits: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            path: { type: "string" },
+            operation: {
+              type: "string",
+              enum: ["replace_file", "replace_selection"]
+            },
+            content: { type: "string" },
+            summary: { type: "string" }
+          },
+          required: ["path", "operation", "content", "summary"]
+        }
+      }
+    },
+    required: ["summary", "plan", "edits"]
+  };
+}
+
+function parseAgentResult(text: string): AgentResult | null {
+  try {
+    const parsed: unknown = JSON.parse(text.trim());
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const candidate = parsed as Partial<AgentResult>;
+    if (
+      typeof candidate.summary === "string" &&
+      Array.isArray(candidate.plan) &&
+      candidate.plan.every((item) => typeof item === "string") &&
+      Array.isArray(candidate.edits) &&
+      candidate.edits.every(isAgentEditResult)
+    ) {
+      return {
+        summary: candidate.summary,
+        plan: candidate.plan,
+        edits: candidate.edits
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function isAgentEditResult(value: unknown): value is AgentEditResult {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<AgentEditResult>;
+  return (
+    typeof candidate.path === "string" &&
+    (candidate.operation === "replace_file" || candidate.operation === "replace_selection") &&
+    typeof candidate.content === "string" &&
+    typeof candidate.summary === "string"
+  );
+}
+
+function formatAgentMessage(summary: string, plan: string[], editCount: number): string {
+  const lines = [
+    "Agent plan prepared.",
+    "",
+    summary,
+    "",
+    "Plan:",
+    ...plan.map((item, index) => `${index + 1}. ${item}`),
+    "",
+    editCount > 0
+      ? `Review ${editCount} proposed edit${editCount === 1 ? "" : "s"} below.`
+      : "No file edits were proposed."
+  ];
+  return lines.join("\n");
+}
+
+function getMessagePendingEdits(message: ChatMessage): PendingEdit[] {
+  if (message.pendingEdits?.length) {
+    return message.pendingEdits;
+  }
+  return message.pendingEdit ? [message.pendingEdit] : [];
 }
 
 function getEditPreviewBefore(edit: PendingEdit): string {

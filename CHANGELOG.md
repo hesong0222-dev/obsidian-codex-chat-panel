@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0
+
+- Added safe Agent mode.
+- Agent mode produces a plan plus zero or more reviewed edits.
+- Agent edits are limited to the active note and explicitly attached extra-context Markdown files.
+- Every proposed file change is shown as a diff with `Apply` and `Reject`.
+- Applying still performs stale-content checks before writing through Obsidian's vault API.
+
 ## 0.8.0
 
 - Added release asset verification to `npm run check`.
