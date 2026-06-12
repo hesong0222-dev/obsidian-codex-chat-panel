@@ -97,6 +97,59 @@ interface DiffRow {
   text: string;
 }
 
+interface SelectionQuickAction {
+  id: string;
+  label: string;
+  icon: string;
+  mode: ComposerMode;
+  prompt: string;
+}
+
+const SELECTION_QUICK_ACTIONS: SelectionQuickAction[] = [
+  {
+    id: "ask",
+    label: "Ask",
+    icon: "message-square-text",
+    mode: "chat",
+    prompt: ""
+  },
+  {
+    id: "explain",
+    label: "Explain",
+    icon: "circle-help",
+    mode: "chat",
+    prompt: "Explain the selected text clearly."
+  },
+  {
+    id: "summarize",
+    label: "Summarize",
+    icon: "list",
+    mode: "chat",
+    prompt: "Summarize the selected text into concise bullet points."
+  },
+  {
+    id: "rewrite",
+    label: "Rewrite",
+    icon: "wand-sparkles",
+    mode: "edit",
+    prompt: "Rewrite the selected text to be clearer while preserving its meaning."
+  },
+  {
+    id: "quiz",
+    label: "Quiz",
+    icon: "file-question",
+    mode: "chat",
+    prompt: "Turn the selected text into a short quiz with answers."
+  },
+  {
+    id: "checklist",
+    label: "Checklist",
+    icon: "list-checks",
+    mode: "chat",
+    prompt: "Turn the selected text into an actionable checklist."
+  }
+];
+
 const DEFAULT_SETTINGS: CodexChatSettings = {
   codexPath: "codex",
   model: "gpt-5.5",
@@ -112,7 +165,7 @@ export default class CodexChatPlugin extends Plugin {
   lastActiveFile: TFile | null = null;
   currentView: CodexChatView | null = null;
   private selectionSnapshot: SelectionSnapshot | null = null;
-  private selectionActionEl: HTMLButtonElement | null = null;
+  private selectionActionEl: HTMLElement | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -359,38 +412,46 @@ export default class CodexChatPlugin extends Plugin {
     const button = this.ensureSelectionActionEl();
     button.dataset.filePath = capture.file.path;
     const top = Math.max(8, Math.min(window.innerHeight - 42, capture.rect.bottom + 8));
-    const left = Math.max(8, Math.min(window.innerWidth - 168, capture.rect.left));
+    const left = Math.max(8, Math.min(window.innerWidth - 360, capture.rect.left));
     button.style.top = `${Math.max(8, top)}px`;
     button.style.left = `${left}px`;
     button.removeClass("codex-chat-hidden");
   }
 
-  private ensureSelectionActionEl(): HTMLButtonElement {
+  private ensureSelectionActionEl(): HTMLElement {
     if (this.selectionActionEl) {
       return this.selectionActionEl;
     }
 
-    const button = document.body.createEl("button", {
+    const menu = document.body.createDiv({
       cls: "codex-chat-selection-action",
-      attr: {
-        type: "button",
-        "aria-label": "Ask in side chat"
-      }
-    });
-    const icon = button.createSpan({ cls: "codex-chat-selection-action-icon" });
-    setIcon(icon, "message-square-text");
-    button.createSpan({ text: "Ask in side chat" });
-
-    button.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-    });
-    button.addEventListener("click", async (event) => {
-      event.preventDefault();
-      await this.askSelectionInSideChat();
+      attr: { "aria-label": "Codex selection actions" }
     });
 
-    this.selectionActionEl = button;
-    return button;
+    for (const action of SELECTION_QUICK_ACTIONS) {
+      const button = menu.createEl("button", {
+        cls: `codex-chat-selection-action-button is-${action.id}`,
+        attr: {
+          type: "button",
+          title: action.label,
+          "aria-label": action.label
+        }
+      });
+      const icon = button.createSpan({ cls: "codex-chat-selection-action-icon" });
+      setIcon(icon, action.icon);
+      button.createSpan({ text: action.label, cls: "codex-chat-selection-action-label" });
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        await this.askSelectionInSideChat(action);
+      });
+    }
+
+    menu.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+    });
+
+    this.selectionActionEl = menu;
+    return menu;
   }
 
   private hideSelectionAction(): void {
@@ -402,7 +463,7 @@ export default class CodexChatPlugin extends Plugin {
     this.selectionActionEl = null;
   }
 
-  private async askSelectionInSideChat(): Promise<void> {
+  private async askSelectionInSideChat(action: SelectionQuickAction): Promise<void> {
     const snapshot = this.selectionSnapshot;
     if (!snapshot?.text.trim()) {
       this.hideSelectionAction();
@@ -415,7 +476,7 @@ export default class CodexChatPlugin extends Plugin {
     }
 
     view.setSelectionPreview(snapshot.filePath, snapshot.text);
-    view.prepareSelectionQuestion();
+    view.prepareSelectionQuestion(action.prompt, action.mode);
     this.hideSelectionAction();
   }
 
@@ -482,10 +543,13 @@ class CodexChatView extends ItemView {
     window.setTimeout(() => this.inputEl?.focus(), 50);
   }
 
-  prepareSelectionQuestion(): void {
-    this.setMode("chat");
+  prepareSelectionQuestion(prompt = "", mode: ComposerMode = "chat"): void {
+    this.setMode(mode);
     if (this.inputEl) {
-      this.inputEl.placeholder = "Ask Codex about the selected text";
+      this.inputEl.value = prompt;
+      this.inputEl.placeholder = mode === "edit"
+        ? "Tell Codex how to edit the selected text"
+        : "Ask Codex about the selected text";
     }
     this.focusComposer();
   }

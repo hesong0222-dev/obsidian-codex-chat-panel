@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- Expanded the floating selection action into quick actions.
+- Added `Ask`, `Explain`, `Summarize`, `Rewrite`, `Quiz`, and `Checklist` presets.
+- Presets open the side panel, preserve the selected text as context, and prefill the composer.
+
 ## 0.4.0
 
 - Edit mode now proposes changes before writing to the note.

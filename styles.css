@@ -125,28 +125,44 @@
 .codex-chat-selection-action {
   position: fixed;
   z-index: 1000;
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   max-width: calc(100vw - 16px);
-  height: 30px;
-  gap: 7px;
-  padding: 0 10px;
+  gap: 3px;
+  padding: 4px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--text-normal);
   background: var(--background-primary);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   font-family: var(--font-interface);
   font-size: 12px;
-  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.codex-chat-selection-action-button {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 650;
   letter-spacing: 0;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.codex-chat-selection-action:hover {
-  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-primary));
+.codex-chat-selection-action-button:hover {
+  color: var(--text-normal);
+  border-color: color-mix(in srgb, var(--interactive-accent) 36%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--interactive-accent) 7%, var(--background-primary));
 }
 
 .codex-chat-selection-action-icon {
