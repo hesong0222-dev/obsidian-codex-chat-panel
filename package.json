@@ -1,13 +1,22 @@
 {
   "name": "obsidian-codex-chat-panel",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A VS Code-style Obsidian side panel for chatting with Codex about the active note.",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hesong0222-dev/obsidian-codex-chat-panel.git"
+  },
+  "homepage": "https://github.com/hesong0222-dev/obsidian-codex-chat-panel#readme",
+  "bugs": {
+    "url": "https://github.com/hesong0222-dev/obsidian-codex-chat-panel/issues"
+  },
   "scripts": {
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "install-local": "node scripts/install-local.mjs",
-    "check": "npm run build && node --check main.js"
+    "verify": "node scripts/verify-release-assets.mjs",
+    "check": "npm run build && node --check main.js && npm run verify"
   },
   "keywords": [
     "obsidian",

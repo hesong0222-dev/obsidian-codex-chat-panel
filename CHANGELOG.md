@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0
+
+- Added release asset verification to `npm run check`.
+- Added release process documentation.
+- Added GitHub issue and pull request templates.
+- Expanded README privacy and demo-readiness sections.
+- Release workflow now runs the full check script before uploading assets.
+
 ## 0.7.0
 
 - Added opt-in Markdown chat history export.

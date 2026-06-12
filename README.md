@@ -6,6 +6,26 @@ Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It r
 
 > Built for people who write, study, research, and refactor notes inside Obsidian, but still want a serious coding-agent style chat next to the file they are reading.
 
+## Demo
+
+Demo assets are intentionally kept out of the initial release until they can be recorded without private vault content.
+
+Planned demo checklist:
+
+- drag-select note text and use quick actions,
+- ask about active note plus extra context,
+- generate an edit proposal and review the diff,
+- save the conversation as a Markdown note.
+
+## Privacy At A Glance
+
+- No plugin-owned server.
+- No separate API key storage.
+- Uses your local Codex CLI session.
+- Sends only the note context you choose to include.
+- Writes only through Obsidian APIs.
+- Edit mode shows a diff and waits for user approval before writing.
+
 ## What It Does
 
 - Opens as a right-side Obsidian panel.
