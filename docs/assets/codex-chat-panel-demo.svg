@@ -1,0 +1,94 @@
+<svg width="1280" height="760" viewBox="0 0 1280 760" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Chat Panel for Obsidian demo</title>
+  <desc id="desc">A clean Obsidian window mockup showing a note on the left and a Codex chat panel on the right.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f7f5ef"/>
+      <stop offset="1" stop-color="#edf3f1"/>
+    </linearGradient>
+    <filter id="shadow" x="70" y="42" width="1140" height="676" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="28" flood-color="#24302c" flood-opacity="0.18"/>
+    </filter>
+    <style>
+      .ui { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+      .tiny { font-size: 13px; }
+      .small { font-size: 15px; }
+      .body { font-size: 18px; }
+      .heading { font-size: 27px; font-weight: 720; }
+      .muted { fill: #7b827d; }
+      .ink { fill: #202622; }
+      .soft { fill: #f9faf7; }
+      .line { stroke: #e0e4dc; }
+      .accent { fill: #6c5ce7; }
+      .green { fill: #2f6f5e; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="760" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)" class="ui">
+    <rect x="96" y="72" width="1088" height="616" rx="18" fill="#fcfcf9"/>
+    <rect x="96" y="72" width="1088" height="52" rx="18" fill="#f0eee7"/>
+    <path d="M96 106C96 96.6 96 91.9 97.8 88.3C99.4 85.1 102.1 82.4 105.3 80.8C108.9 79 113.6 79 123 79H1157C1166.4 79 1171.1 79 1174.7 80.8C1177.9 82.4 1180.6 85.1 1182.2 88.3C1184 91.9 1184 96.6 1184 106V124H96V106Z" fill="#f4f1eb"/>
+    <circle cx="126" cy="98" r="6" fill="#d96c5f"/>
+    <circle cx="148" cy="98" r="6" fill="#d9b44a"/>
+    <circle cx="170" cy="98" r="6" fill="#5aa871"/>
+    <text x="212" y="103" class="tiny muted">Obsidian vault / Research note.md</text>
+
+    <rect x="96" y="124" width="220" height="564" fill="#f7f6f1"/>
+    <line x1="316" y1="124" x2="316" y2="688" class="line"/>
+    <text x="128" y="166" class="small muted">Files</text>
+    <rect x="122" y="188" width="164" height="34" rx="7" fill="#edece4"/>
+    <text x="140" y="210" class="small ink">Research note</text>
+    <text x="140" y="253" class="small muted">Lecture outline</text>
+    <text x="140" y="291" class="small muted">Reading queue</text>
+    <text x="140" y="329" class="small muted">Codex Chat History</text>
+
+    <rect x="316" y="124" width="524" height="564" fill="#fffefb"/>
+    <text x="354" y="181" class="heading ink">Research note</text>
+    <text x="354" y="222" class="body muted">Codex works best when the question is tied to the exact note.</text>
+    <rect x="354" y="252" width="430" height="116" rx="10" fill="#f4f7f4" stroke="#cfd9d2"/>
+    <text x="378" y="286" class="small ink">The key claim is that local context changes the answer.</text>
+    <text x="378" y="318" class="small ink">Instead of pasting a whole vault into chat, send the</text>
+    <text x="378" y="350" class="small ink">active note plus the paragraph that needs attention.</text>
+    <rect x="520" y="383" width="230" height="38" rx="9" fill="#262c28"/>
+    <text x="545" y="407" class="small soft">Ask in side chat</text>
+    <rect x="354" y="450" width="382" height="14" rx="7" fill="#ebe9e1"/>
+    <rect x="354" y="482" width="444" height="14" rx="7" fill="#ebe9e1"/>
+    <rect x="354" y="514" width="314" height="14" rx="7" fill="#ebe9e1"/>
+    <rect x="354" y="576" width="132" height="34" rx="17" fill="#eef1ec"/>
+    <text x="378" y="598" class="tiny green">Selected 214 chars</text>
+
+    <rect x="840" y="124" width="344" height="564" fill="#fafaf7"/>
+    <line x1="840" y1="124" x2="840" y2="688" class="line"/>
+    <text x="870" y="167" class="small ink" font-weight="700">Codex Chat</text>
+    <rect x="1046" y="144" width="100" height="30" rx="8" fill="#ebeae3"/>
+    <text x="1064" y="164" class="tiny ink">gpt-5.5</text>
+
+    <rect x="870" y="202" width="246" height="72" rx="12" fill="#ffffff" stroke="#e2e4dc"/>
+    <text x="890" y="230" class="small ink">Explain the selected claim</text>
+    <text x="890" y="254" class="tiny muted">using this note only.</text>
+
+    <rect x="902" y="300" width="244" height="142" rx="12" fill="#f1f5f2" stroke="#dce5dc"/>
+    <text x="922" y="328" class="small green" font-weight="700">Codex</text>
+    <text x="922" y="358" class="small ink">The note is arguing for</text>
+    <text x="922" y="382" class="small ink">focused context: active file</text>
+    <text x="922" y="406" class="small ink">plus selection, not a full</text>
+    <text x="922" y="430" class="small ink">vault dump.</text>
+
+    <rect x="902" y="470" width="244" height="84" rx="12" fill="#ffffff" stroke="#e2e4dc"/>
+    <text x="922" y="498" class="small ink">Proposed edit ready</text>
+    <rect x="922" y="518" width="70" height="24" rx="6" fill="#e7f1ea"/>
+    <text x="941" y="535" class="tiny green">Apply</text>
+    <rect x="1004" y="518" width="70" height="24" rx="6" fill="#f2e9e7"/>
+    <text x="1024" y="535" class="tiny" fill="#9a4f44">Reject</text>
+
+    <rect x="870" y="590" width="276" height="50" rx="12" fill="#ffffff" stroke="#d9ddd6"/>
+    <text x="891" y="621" class="small muted">Ask, edit, or run Agent mode...</text>
+    <circle cx="1118" cy="615" r="16" fill="#2f6f5e"/>
+    <path d="M1111 615H1125M1125 615L1119 609M1125 615L1119 621" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="640" y="728" text-anchor="middle" class="ui small muted">Chat with Codex beside the Markdown file you are reading.</text>
+</svg>

@@ -1,70 +1,33 @@
 # Codex Chat Panel for Obsidian
 
-Chat with Codex from the side of your note.
+[![Release](https://img.shields.io/github/v/release/hesong0222-dev/obsidian-codex-chat-panel?label=release)](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/releases/latest)
+[![CI](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f6f5e.svg)](LICENSE)
+[![Obsidian](https://img.shields.io/badge/Obsidian-desktop-7c6cff.svg)](https://obsidian.md)
+[![Stars](https://img.shields.io/github/stars/hesong0222-dev/obsidian-codex-chat-panel?style=social)](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/stargazers)
 
-Codex Chat Panel adds a compact, VS Code-style assistant panel to Obsidian. It reads the active note, remembers highlighted text, renders Markdown answers properly, and sends the request through your local Codex CLI. No separate API key flow is needed when your Codex CLI is already logged in with your ChatGPT account.
+A native-feeling Obsidian side panel for chatting with Codex about the note you are reading.
 
-> Built for people who write, study, research, and refactor notes inside Obsidian, but still want a serious coding-agent style chat next to the file they are reading.
+Open a note, select the exact paragraph you care about, and ask Codex in the right sidebar. Codex Chat Panel can answer questions, explain selected text, propose reviewed Markdown edits, and save useful conversations back into your vault.
 
-## Demo
+[Download the latest release](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/releases/latest) · [Install](#30-second-install) · [Safe editing](#safe-editing) · [Roadmap](docs/ROADMAP_1_0.md) · [Report an issue](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/issues/new/choose)
 
-Demo assets are intentionally kept out of the initial release until they can be recorded without private vault content.
+![Codex Chat Panel demo](docs/assets/codex-chat-panel-demo.svg)
 
-Planned demo checklist:
+If this saves you from copying notes into a browser tab, a star helps other Obsidian users find it.
 
-- drag-select note text and use quick actions,
-- ask about active note plus extra context,
-- generate an edit proposal and review the diff,
-- save the conversation as a Markdown note.
+## Why People Star This
 
-## Privacy At A Glance
+- **It stays in Obsidian.** The panel sits beside your note, keeps the current file in view, and renders Codex replies as real Markdown.
+- **It uses your Codex CLI login.** No plugin-owned server, no separate API key flow, and no custom account system.
+- **It is selection-first.** Drag text in the note and use quick actions like Ask, Explain, Summarize, Rewrite, Quiz, and Checklist.
+- **It can edit notes without surprise writes.** Codex proposes a diff, then you choose Apply or Reject.
+- **It has a safe Agent mode.** Larger workflows return a plan and reviewed file edits limited to the active note plus Markdown files you explicitly attach.
+- **It is built for real vault work.** Extra context files, model picker, streaming status, chat export, stale-content checks, and practical defaults are already included.
 
-- No plugin-owned server.
-- No separate API key storage.
-- Uses your local Codex CLI session.
-- Sends only the note context you choose to include.
-- Writes only through Obsidian APIs.
-- Edit mode shows a diff and waits for user approval before writing.
+## 30-Second Install
 
-## What It Does
-
-- Opens as a right-side Obsidian panel.
-- Sends the active note as context.
-- Sends highlighted text as focused context when you drag-select part of a note.
-- Lets you attach a few extra Markdown files as labeled chat context.
-- Shows quick actions beside selected note text for one-click selection workflows.
-- Can edit the active note or highlighted selection in `Edit` mode.
-- Includes safe `Agent` mode for reviewed plans and multi-file proposals.
-- Can save the current conversation as a Markdown note inside the vault.
-- Keeps a small chat history so follow-up questions make sense.
-- Shows when Codex is reading, working, and typing.
-- Streams Codex CLI JSON events into the panel instead of waiting silently.
-- Renders Codex Markdown replies as real headings, lists, links, and code blocks.
-- Shows a diff preview before applying Codex edits.
-- Lets you choose practical ChatGPT-account Codex models:
-  - `gpt-5.5`
-  - `gpt-5.4-mini`
-  - `gpt-5.3-codex-spark`
-- Runs Codex in read-only mode by default.
-
-## Why This Exists
-
-Obsidian already has your thinking. Codex already has strong reasoning and local workspace awareness. This plugin puts them next to each other without making you copy-paste notes into a browser tab.
-
-The workflow is intentionally simple:
-
-1. Open a note.
-2. Optionally highlight the paragraph, code block, or theorem you care about.
-3. Ask in the side panel.
-4. Get a Markdown-rendered answer in place.
-
-## Requirements
-
-- Obsidian Desktop.
-- Node.js 22 or newer if you build from source.
-- Codex CLI installed and logged in.
-
-Check Codex first:
+1. Install and log in to Codex CLI:
 
 ```bash
 codex --version
@@ -72,130 +35,56 @@ codex login
 codex debug models
 ```
 
-If `codex debug models` works, the plugin can usually call Codex too.
+2. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/hesong0222-dev/obsidian-codex-chat-panel/releases/latest).
 
-## Install
-
-### Option 1: Manual Install From a Release
-
-1. Download `main.js`, `manifest.json`, and `styles.css` from the latest GitHub release.
-2. Create this folder in your vault:
+3. Put those three files in your vault:
 
 ```text
 YOUR_VAULT/.obsidian/plugins/codex-chat-panel/
 ```
 
-3. Put the three files there.
-4. In Obsidian, open `Settings -> Community plugins`.
-5. Turn off Safe Mode if needed.
-6. Enable `Codex Chat Panel`.
+4. In Obsidian, open `Settings -> Community plugins`, enable community plugins if needed, then enable `Codex Chat Panel`.
 
-### Option 2: Build From Source
+## What You Can Do
 
-```bash
-git clone https://github.com/hesong0222-dev/obsidian-codex-chat-panel.git
-cd obsidian-codex-chat-panel
-npm ci
-npm run build
-npm run install-local -- /path/to/your/obsidian/vault
-```
+| Workflow | What happens |
+| --- | --- |
+| Ask about the active note | The current Markdown file is sent as context and the answer appears in the side panel. |
+| Ask about selected text | Drag-select note text and use the floating `Ask in side chat` style actions. |
+| Add more context | Attach a few extra Markdown files as labeled context chips. |
+| Choose a model | Pick `gpt-5.5`, `gpt-5.4-mini`, or `gpt-5.3-codex-spark` next to the send button. |
+| Stream responses | Codex CLI JSON events update the panel while the model is working. |
+| Render Markdown | Headings, lists, links, code blocks, and inline code render as formatted content. |
+| Edit the note | Codex returns structured edit JSON, the plugin shows a diff, and you approve the write. |
+| Use Agent mode | Codex plans larger note workflows and returns one reviewed diff per proposed file change. |
+| Save useful chats | Export the current conversation to `Codex Chat History/` inside your vault. |
 
-Then reload Obsidian and enable the plugin.
+## Modes
 
-## Use
+### Chat
 
-Open the command palette and run:
+The default mode for questions, summaries, explanations, and study prompts.
 
-```text
-Open Codex chat panel
-```
+Open a note, type a question, and press `Enter`. Use `Shift+Enter` for a new line.
 
-The panel also adds a ribbon icon.
+### Edit
 
-### Ask About the Current Note
-
-Open a note, type a question, and press `Enter`.
-
-Use `Shift+Enter` for a new line.
-
-### Add Extra Context
-
-Use `Add context...` in the panel context bar to attach additional Markdown files. Added files appear as chips and are sent as labeled extra context.
-
-The active note remains the primary source. Extra files are included only to help with related notes, references, or nearby lecture material.
-
-### Ask About a Selection
-
-Drag-select text in source mode or reading mode. A small action bar appears beside the selection.
-
-Available actions:
-
-- `Ask`
-- `Explain`
-- `Summarize`
-- `Rewrite`
-- `Quiz`
-- `Checklist`
-
-Each action opens the panel with that excerpt captured as a focused `<selection>` block. Preset actions also prefill the composer with a practical prompt.
-
-This is useful for:
-
-- Explaining a confusing paragraph.
-- Turning lecture notes into a quiz.
-- Reviewing a code snippet in a Markdown note.
-- Asking "what does this proof step mean?"
-
-### Choose a Model
-
-The model picker sits next to the send button.
-
-- `GPT-5.5`: best default for hard work.
-- `GPT-5.4 mini`: lighter and practical for quick note questions.
-- `GPT-5.3 Spark`: fast, useful for short answers and study prompts.
-
-The plugin only shows models that are practical for Codex with a ChatGPT account.
-
-### Save a Chat
-
-Click the save icon in the panel header to export the current conversation as Markdown.
-
-Saved chats are written to:
-
-```text
-Codex Chat History/
-```
-
-The saved note includes model, source note, selected-text summary, extra context files, timestamps, messages, and edit proposal status.
-
-### Edit the Current Note
-
-Switch `Mode` from `Chat` to `Edit`, then describe the change you want.
+Use Edit mode when you want Codex to rewrite the active note or selected text.
 
 Examples:
 
 ```text
 make this explanation shorter and clearer
 turn this section into bullet points
-fix the C code comments in the selected block
+fix the code comments in the selected block
 rewrite this note as an exam checklist
 ```
 
-If text is selected, Codex proposes an edit for that selection. If nothing is selected, Codex proposes an edit for the whole active note.
+The note is not changed immediately. Review the diff, then choose `Apply` or `Reject`.
 
-The note is not changed immediately. Review the inline diff, then choose `Apply` or `Reject`.
+### Agent
 
-Edit mode is intentionally scoped:
-
-- It only applies changes to the active note.
-- It uses structured JSON from Codex.
-- The plugin applies approved text through Obsidian's vault API.
-- The plugin checks that the note has not changed since the edit was proposed.
-- Large whole-note edits are blocked; select a smaller section instead.
-
-### Use Safe Agent Mode
-
-Switch `Mode` to `Agent` when you want Codex to plan a larger note workflow.
+Use Agent mode when you want a larger note workflow, such as reorganizing a research note or updating several attached Markdown files.
 
 Agent mode can inspect:
 
@@ -209,7 +98,44 @@ Agent mode returns:
 - zero or more proposed edits,
 - one reviewable diff per proposed file change.
 
-Agent mode does not apply changes automatically. Each proposed edit has its own `Apply` and `Reject` controls, and applying verifies that the file has not changed since the proposal was generated.
+## Safe Editing
+
+Codex Chat Panel is intentionally conservative about writes.
+
+- Chat calls run Codex with `--sandbox read-only`.
+- Edit mode is limited to the active Obsidian note.
+- Agent mode is limited to the active note and attached Markdown files.
+- Edits are shown as diffs before anything is written.
+- Each proposed edit needs explicit user approval.
+- The plugin checks that a file has not changed since the proposal was generated.
+- Large whole-note edits are blocked so you can select a smaller section instead.
+
+You should still treat selected text and active notes as data you are intentionally sending through your local Codex CLI session.
+
+## Privacy At A Glance
+
+- No plugin-owned server.
+- No separate API key storage.
+- Uses your local Codex CLI session.
+- Sends only the note context you choose to include.
+- Chat history export is opt-in.
+- Writes happen through Obsidian APIs after review.
+
+## Models
+
+The model picker focuses on practical Codex models for ChatGPT-account Codex usage:
+
+| Model | Good for |
+| --- | --- |
+| `gpt-5.5` | Harder reasoning, editing, and Agent mode. |
+| `gpt-5.4-mini` | Everyday note questions and shorter rewrites. |
+| `gpt-5.3-codex-spark` | Fast study prompts, quick explanations, and lightweight chat. |
+
+If a model fails, check your local Codex account:
+
+```bash
+codex debug models
+```
 
 ## Settings
 
@@ -224,6 +150,18 @@ Open `Settings -> Codex Chat Panel`.
 | Max active-file context | `24000` chars | Large notes are clipped in the middle. |
 | Timeout | `180` seconds | Stops long Codex calls. |
 | Answer language | Korean | Can be changed to English or match latest message. |
+
+## Build From Source
+
+```bash
+git clone https://github.com/hesong0222-dev/obsidian-codex-chat-panel.git
+cd obsidian-codex-chat-panel
+npm ci
+npm run build
+npm run install-local -- /path/to/your/obsidian/vault
+```
+
+Then reload Obsidian and enable the plugin.
 
 ## How It Works
 
@@ -267,22 +205,6 @@ In Edit mode, Codex must return structured JSON:
 
 The plugin then shows a diff preview. The result is written only after you choose `Apply`.
 
-## Privacy And Safety
-
-This plugin sends note content to Codex through your local Codex CLI session. It does not run its own server and does not store chat transcripts outside Obsidian's plugin runtime.
-
-Chat history export is opt-in. When used, transcripts are written as Markdown files inside your own vault.
-
-Important defaults:
-
-- Codex runs with `--sandbox read-only`.
-- Calls are `--ephemeral`.
-- The plugin ignores project/user Codex rules for cleaner note Q&A.
-- Edit mode is limited to the active Obsidian note and applies approved changes through Obsidian, not arbitrary shell writes.
-- Agent mode is limited to active/attached Markdown files and applies only user-approved reviewed edits.
-
-You should still treat selected text and active notes as data you are intentionally sending to Codex.
-
 ## Troubleshooting
 
 ### Obsidian Says Codex Failed
@@ -312,16 +234,6 @@ Make sure `Include selection` is enabled in settings. Then select text in the no
 
 The panel shows `Selected N chars` when it has captured a selection. When possible, the note also shows quick actions beside the selected text.
 
-### A Model Fails
-
-Model access depends on the Codex CLI account. Check:
-
-```bash
-codex debug models
-```
-
-If a model is not available for your account, choose another model in the panel.
-
 ## Development
 
 ```bash
@@ -345,7 +257,7 @@ The generated Obsidian files are:
 4. Tag the version:
 
 ```bash
-git tag 0.1.0
+git tag 1.0.1
 git push origin main --tags
 ```
 
@@ -353,14 +265,23 @@ GitHub Actions uploads the three release files.
 
 ## Roadmap
 
-- BRAT install instructions once the first release is published.
-- Optional prompt presets for explain, summarize, quiz, and review.
-- Per-vault language preference in the panel.
-- Better model availability detection from `codex debug models`.
+- Submit to the official Obsidian community plugin directory.
+- Add BRAT install instructions.
+- Add optional prompt preset editing.
+- Add smarter model availability detection from `codex debug models`.
+- Add keyboard-first quick action shortcuts.
+- Add a small public demo video with a clean sample vault.
 
 ## Contributing
 
 Small, practical improvements are welcome. Please keep the panel quiet, fast, and note-first.
+
+Good first issues:
+
+- polish the Obsidian theme integration,
+- improve selection behavior across editor modes,
+- add tests around diff parsing and stale-content checks,
+- write a clean sample vault for screenshots and demos.
 
 Before opening a PR:
 
